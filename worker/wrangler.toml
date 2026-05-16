@@ -1,0 +1,7 @@
+name = "bonfire"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "ROOMS"
+id = "8817c0453fcb4d52b6a5c1f0cef91964"
