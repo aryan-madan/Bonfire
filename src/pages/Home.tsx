@@ -85,7 +85,7 @@ export function Home() {
 
     return (
         <main className="grid min-h-screen place-items-center bg-cocoa-900 px-4 py-8 text-ember-50">
-            <section className="w-full max-w-[430px] rounded-[2rem] bg-plum-900 p-5">
+            <section className="w-full max-w-[430px]">
                 <div className="mb-7 text-center">
                     <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-[1.25rem] bg-ember-400 text-xl text-white">
                         <i className="fa-solid fa-fire" />
@@ -117,14 +117,14 @@ export function Home() {
 
                             <div className="grid grid-cols-2 gap-3">
                                 <button
-                                    className="rounded-[1.35rem] bg-cocoa-800 px-5 py-4 text-sm font-bold text-ember-50 transition hover:bg-cocoa-700 disabled:opacity-40"
+                                    className="rounded-[1.35rem] bg-plum-800 px-5 py-4 text-sm font-bold text-ember-100/80 transition hover:bg-plum-700 hover:text-ember-50 disabled:opacity-40"
                                     disabled={!named}
                                     onClick={() => setMode('create')}
                                 >
                                     new room
                                 </button>
                                 <button
-                                    className="rounded-[1.35rem] bg-ember-400 px-5 py-4 text-sm font-bold text-white transition hover:bg-ember-500 disabled:opacity-40"
+                                    className="rounded-[1.35rem] bg-mint-300 px-5 py-4 text-sm font-bold text-cocoa-900 transition hover:bg-mint-300/85 disabled:opacity-40"
                                     disabled={!named}
                                     onClick={() => void startJoin()}
                                 >

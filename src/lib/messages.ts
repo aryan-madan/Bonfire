@@ -1,4 +1,14 @@
-export type Kind = 'chat' | 'play' | 'pause' | 'seek' | 'queue' | 'next' | 'name'
+export type Kind =
+    | 'chat'
+    | 'play'
+    | 'pause'
+    | 'seek'
+    | 'queue'
+    | 'next'
+    | 'name'
+    | 'media-offer'
+    | 'media-answer'
+    | 'media-state'
 
 export interface Msg {
     kind: Kind
