@@ -1,29 +1,35 @@
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { host, join, poll, type Peer } from '../lib/rtc'
 import { Room } from './Room'
 
 type Mode = 'idle' | 'create' | 'joining'
 type Status = 'idle' | 'generating' | 'waiting' | 'connecting' | 'connected'
 
+const roomCodePattern = /^[a-zA-Z0-9-]{4,32}$/
+
+function extractRoom(raw: string): string | null {
+    const value = raw.trim()
+    if (!value) return null
+    try {
+        const url = new URL(value)
+        return new URLSearchParams(url.hash.slice(1)).get('room')
+    } catch {
+        return roomCodePattern.test(value) ? value : null
+    }
+}
+
+function roomFromHash(): string {
+    return new URLSearchParams(window.location.hash.slice(1)).get('room') ?? ''
+}
+
 export function Home() {
+    const pendingRoom = useRef(roomFromHash())
     const [mode, setMode] = useState<Mode>('idle')
     const [name, setName] = useState(() => localStorage.getItem('bf-name') ?? '')
+    const [joinInput, setJoinInput] = useState(roomFromHash)
+    const [joinError, setJoinError] = useState('')
     const [status, setStatus] = useState<Status>('idle')
-    const [link, setLink] = useState('')
-    const peer = useRef<Peer | null>(null)
-
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.hash.slice(1))
-        const room = params.get('room')
-        if (room && name.trim()) {
-            window.history.replaceState(null, '', window.location.pathname)
-            setStatus('connecting')
-            setMode('joining')
-            join(room, () => setStatus('connected'), () => { }).then(p => { peer.current = p })
-        } else if (room) {
-            window.history.replaceState(null, '', window.location.pathname)
-        }
-    }, [])
+    const [activePeer, setActivePeer] = useState<Peer | null>(null)
 
     function saveName(v: string) {
         setName(v)
@@ -31,97 +37,126 @@ export function Home() {
     }
 
     function cleanup() {
-        peer.current?.conn.close()
-        peer.current = null
+        activePeer?.conn.close()
+        setActivePeer(null)
         setMode('idle')
         setStatus('idle')
-        setLink('')
+        setJoinError('')
         window.history.replaceState(null, '', window.location.pathname)
     }
 
-    function onopen() { setStatus('connected') }
+    const startJoin = useCallback(async (raw = joinInput) => {
+        const room = extractRoom(raw)
+        if (!name.trim()) {
+            setJoinError('add your name first')
+            return
+        }
+        if (!room) {
+            setJoinError('paste a room link or code')
+            return
+        }
 
-    function extractRoom(raw: string): string | null {
         try {
-            const url = new URL(raw.trim())
-            return new URLSearchParams(url.hash.slice(1)).get('room')
-        } catch { return null }
-    }
-
-    function handleLinkChange(v: string) {
-        setLink(v)
-        const room = extractRoom(v)
-        if (room && name.trim()) {
+            setJoinError('')
             setStatus('connecting')
             setMode('joining')
-            join(room, onopen, () => { }).then(p => { peer.current = p })
+            setActivePeer(await join(room, () => setStatus('connected'), () => { }))
+        } catch {
+            setJoinError('that room could not be found')
+            setStatus('idle')
+            setMode('idle')
         }
-    }
+    }, [joinInput, name])
+
+    useEffect(() => {
+        if (!pendingRoom.current) return
+        window.history.replaceState(null, '', window.location.pathname)
+        if (!name.trim()) return
+        const room = pendingRoom.current
+        pendingRoom.current = ''
+        void startJoin(room)
+    }, [name, startJoin])
 
     const named = name.trim().length > 0
 
-    if (status === 'connected' && peer.current) {
-        return <Room peer={peer.current} name={name} leave={cleanup} />
+    if (status === 'connected' && activePeer) {
+        return <Room peer={activePeer} name={name.trim()} leave={cleanup} />
     }
 
     return (
-        <main className="h-shell">
-            <div className="h-card">
-                <div className="h-logo">
-                    bonfire
+        <main className="grid min-h-screen place-items-center bg-cocoa-900 px-4 py-8 text-ember-50">
+            <section className="w-full max-w-[430px] rounded-[2rem] bg-plum-900 p-5">
+                <div className="mb-7 text-center">
+                    <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-[1.25rem] bg-ember-400 text-xl text-white">
+                        <i className="fa-solid fa-fire" />
+                    </div>
+                    <h1 className="text-5xl font-bold leading-none tracking-normal">bonfire</h1>
                 </div>
 
-                <div className="h-hero">
-                    <h1 className="h-title">watch<br />together</h1>
-                    <p className="h-sub">p2p · no accounts · just you two</p>
-                </div>
-
-                <div className="h-form">
+                <div className="grid gap-3">
                     <Field
+                        icon="fa-regular fa-face-smile"
                         label="your name"
                         value={name}
                         onChange={saveName}
-                        placeholder="what do people call you?"
+                        placeholder="name"
                         autoFocus
                     />
 
                     {mode === 'idle' && (
-                        <div className="h-actions">
-                            <button
-                                className="h-btn-primary"
-                                disabled={!named}
-                                onClick={() => setMode('create')}
-                            >
-                                new room
-                            </button>
+                        <>
                             <Field
-                                label="invite link"
-                                value={link}
-                                onChange={handleLinkChange}
-                                placeholder="paste an invite link…"
+                                icon="fa-solid fa-link"
+                                label="room link or code"
+                                value={joinInput}
+                                onChange={v => { setJoinInput(v); setJoinError('') }}
+                                placeholder="link or code"
                                 disabled={!named}
                             />
-                        </div>
+                            {joinError && <p className="px-2 text-sm font-semibold text-berry-300">{joinError}</p>}
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    className="rounded-[1.35rem] bg-cocoa-800 px-5 py-4 text-sm font-bold text-ember-50 transition hover:bg-cocoa-700 disabled:opacity-40"
+                                    disabled={!named}
+                                    onClick={() => setMode('create')}
+                                >
+                                    new room
+                                </button>
+                                <button
+                                    className="rounded-[1.35rem] bg-ember-400 px-5 py-4 text-sm font-bold text-white transition hover:bg-ember-500 disabled:opacity-40"
+                                    disabled={!named}
+                                    onClick={() => void startJoin()}
+                                >
+                                    join
+                                </button>
+                            </div>
+                        </>
                     )}
 
                     {mode === 'create' && (
-                        <CreateRoom peer={peer} setStatus={setStatus} onopen={onopen} back={cleanup} />
+                        <CreateRoom setPeer={setActivePeer} setStatus={setStatus} onopen={() => setStatus('connected')} back={cleanup} />
                     )}
 
                     {mode === 'joining' && (
-                        <div className="h-status">
-                            <div className="h-spinner" />
-                            <span>{status === 'connecting' ? 'connecting…' : 'joining…'}</span>
-                            <button className="h-text-btn" onClick={cleanup}>cancel</button>
+                        <div className="flex items-center justify-between rounded-[1.5rem] bg-cocoa-800 px-5 py-4">
+                            <span className="flex items-center gap-3 text-sm font-bold text-ember-100">
+                                <span className="h-3 w-3 rounded-full bg-ember-400 [animation:soft-pop_0.8s_ease_infinite_alternate]" />
+                                {status === 'connecting' ? 'connecting...' : 'joining...'}
+                            </span>
+                            <button className="text-sm font-bold text-ember-100/70 hover:text-ember-50" onClick={cleanup}>
+                                cancel
+                            </button>
                         </div>
                     )}
                 </div>
-            </div>
+            </section>
         </main>
     )
 }
 
-function Field({ label, value, onChange, placeholder, disabled = false, autoFocus = false }: {
+function Field({ icon, label, value, onChange, placeholder, disabled = false, autoFocus = false }: {
+    icon: string
     label: string
     value: string
     onChange: (v: string) => void
@@ -130,29 +165,35 @@ function Field({ label, value, onChange, placeholder, disabled = false, autoFocu
     autoFocus?: boolean
 }) {
     return (
-        <div className="h-field-wrap">
-            <label className="h-label">{label}</label>
-            <input
-                className="h-field"
-                value={value}
-                onChange={e => onChange(e.target.value)}
-                placeholder={placeholder}
-                disabled={disabled}
-                autoFocus={autoFocus}
-                maxLength={32}
-            />
-        </div>
+        <label className="group flex items-center gap-3 rounded-[1.35rem] bg-cocoa-800 px-4 py-3 transition focus-within:bg-cocoa-700">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-plum-700 text-ember-500">
+                <i className={icon} />
+            </span>
+            <span className="min-w-0 flex-1">
+                <span className="block text-xs font-bold uppercase text-ember-100/65 transition group-focus-within:text-ember-500">{label}</span>
+                <input
+                    className="w-full bg-transparent text-base font-semibold text-ember-50 placeholder:text-ember-100/45 disabled:opacity-40"
+                    value={value}
+                    onChange={e => onChange(e.target.value)}
+                    placeholder={placeholder}
+                    disabled={disabled}
+                    autoFocus={autoFocus}
+                    maxLength={128}
+                />
+            </span>
+        </label>
     )
 }
 
-function CreateRoom({ peer, setStatus, onopen, back }: {
-    peer: React.MutableRefObject<Peer | null>
+function CreateRoom({ setPeer, setStatus, onopen, back }: {
+    setPeer: (peer: Peer) => void
     setStatus: (s: Status) => void
     onopen: () => void
     back: () => void
 }) {
     const [invite, setInvite] = useState('')
-    const [copied, setCopied] = useState(false)
+    const [roomCode, setRoomCode] = useState('')
+    const [copied, setCopied] = useState<'link' | 'code' | null>(null)
     const started = useRef(false)
 
     useEffect(() => {
@@ -160,42 +201,54 @@ function CreateRoom({ peer, setStatus, onopen, back }: {
         started.current = true
         setStatus('generating')
         host(onopen, () => { }).then(({ peer: p, link, room }) => {
-            peer.current = p
+            setPeer(p)
             setInvite(link)
+            setRoomCode(room)
             setStatus('waiting')
             poll(room, p).then(() => setStatus('connected')).catch(() => { })
         })
-    }, [])
+    }, [onopen, setPeer, setStatus])
 
-    function copy() {
-        navigator.clipboard.writeText(invite)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-    }
-
-    function truncate(url: string): string {
-        try {
-            const u = new URL(url)
-            const room = new URLSearchParams(u.hash.slice(1)).get('room') ?? ''
-            return `${u.host}/#room=${room.slice(0, 10)}…`
-        } catch { return url }
+    function copy(text: string, kind: 'link' | 'code') {
+        void navigator.clipboard.writeText(text)
+        setCopied(kind)
+        setTimeout(() => setCopied(null), 1800)
     }
 
     return (
-        <div className="h-create">
-            <div className="h-waiting">
-                <div className="h-spinner" />
-                <span>waiting for them to join…</span>
+        <div className="grid gap-3 [animation:soft-pop_0.32s_ease_both]">
+            <div className="flex items-center gap-3 rounded-[1.5rem] bg-cocoa-800 px-5 py-4 text-sm font-bold text-ember-100/70">
+                <span className="h-3 w-3 rounded-full bg-ember-300 [animation:soft-pop_0.8s_ease_infinite_alternate]" />
+                waiting for someone to join...
             </div>
+
             <button
-                className={`h-invite-btn${copied ? ' h-invite-btn--ok' : ''}`}
-                onClick={copy}
+                className="flex items-center justify-between gap-4 rounded-[1.5rem] bg-cocoa-800 px-5 py-4 text-left transition hover:bg-cocoa-700 disabled:opacity-40"
+                onClick={() => copy(invite, 'link')}
                 disabled={!invite}
             >
-                <span className="h-invite-url">{invite ? truncate(invite) : 'generating…'}</span>
-                <span className="h-invite-cta">{copied ? 'copied!' : 'copy link'}</span>
+                <span className="min-w-0">
+                    <span className="block text-xs font-bold uppercase text-ember-100/65">invite link</span>
+                    <span className="block truncate text-sm font-semibold text-ember-100/70">{invite || 'generating...'}</span>
+                </span>
+                <span className="shrink-0 text-sm font-bold text-ember-300">{copied === 'link' ? 'copied' : 'copy'}</span>
             </button>
-            <button className="h-text-btn" onClick={back}>cancel</button>
+
+            <button
+                className="flex items-center justify-between gap-4 rounded-[1.5rem] bg-cocoa-800 px-5 py-4 text-left transition hover:bg-cocoa-700 disabled:opacity-40"
+                onClick={() => copy(roomCode, 'code')}
+                disabled={!roomCode}
+            >
+                <span>
+                    <span className="block text-xs font-bold uppercase text-ember-100/65">room code</span>
+                    <span className="text-2xl font-bold tracking-normal text-ember-50">{roomCode || '--------'}</span>
+                </span>
+                <span className="shrink-0 text-sm font-bold text-mint-300">{copied === 'code' ? 'copied' : 'copy'}</span>
+            </button>
+
+            <button className="py-2 text-sm font-bold text-ember-100/45 hover:text-ember-50" onClick={back}>
+                cancel
+            </button>
         </div>
     )
 }
