@@ -1,6 +1,12 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
 import YouTube, { type YouTubePlayer, type YouTubeEvent } from 'react-youtube'
 
+export interface PlayerHandle {
+    playVideo: () => void
+    pauseVideo: () => void
+    seekTo: (t: number, a: boolean) => void
+}
+
 interface Props {
     url: string | null
     onPlay: () => void
@@ -19,13 +25,10 @@ function getID(url: string): string | null {
     }
 }
 
-export const Player = forwardRef<any, Props>(({ url, onPlay, onPause, onSeek }, ref) => {
+export const Player = forwardRef<PlayerHandle, Props>(({ url, onPlay, onPause, onSeek }, ref) => {
     const playerRef = useRef<YouTubePlayer>(null)
-    // suppress: ignore ALL state changes for this many ms after a remote-driven action
     const suppressUntil = useRef(0)
-    // lastState: avoid firing duplicate events for the same state
     const lastState = useRef<number | null>(null)
-    // lastSeekTime: track last seek time to avoid redundant seek events
     const lastSeekTime = useRef<number>(-1)
     const [error, setError] = useState(false)
 
@@ -57,16 +60,12 @@ export const Player = forwardRef<any, Props>(({ url, onPlay, onPause, onSeek }, 
     }
 
     function onStateChange(e: YouTubeEvent) {
-        // Ignore events triggered by remote-driven calls
         if (Date.now() < suppressUntil.current) return
-        // Ignore duplicate state
         if (e.data === lastState.current) return
         lastState.current = e.data
 
         if (e.data === 1) {
-            // Playing — emit seek + play
             const t = e.target.getCurrentTime?.() ?? 0
-            // Only emit seek if time changed meaningfully from last known seek
             if (Math.abs(t - lastSeekTime.current) > 1.5) {
                 lastSeekTime.current = t
                 onSeek(t)
@@ -75,7 +74,6 @@ export const Player = forwardRef<any, Props>(({ url, onPlay, onPause, onSeek }, 
         }
 
         if (e.data === 2) {
-            // Paused
             onPause()
         }
     }
@@ -86,26 +84,32 @@ export const Player = forwardRef<any, Props>(({ url, onPlay, onPause, onSeek }, 
 
     if (!url || !id) {
         return (
-            <div className="empty">
-                <i className="fa-solid fa-fire" style={{ fontSize: '2rem', color: 'var(--pink)', marginBottom: '0.5rem' }} />
-                <span className="empty-label">no video playing</span>
-                <span className="empty-sub">add a youtube link to watch together</span>
+            <div className="grid h-full place-items-center bg-cocoa-900 text-center">
+                <div className="space-y-2">
+                    <i className="fa-solid fa-fire text-3xl text-ember-300/70" />
+                    <p className="text-base font-bold text-ember-50">no video playing</p>
+                    <p className="text-sm font-semibold text-ember-100/45">add a youtube link to watch together</p>
+                </div>
             </div>
         )
     }
 
     if (error) {
         return (
-            <div className="empty">
-                <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '1.5rem', color: 'var(--rose)', marginBottom: '0.5rem' }} />
-                <span className="empty-label">this video can't be embedded</span>
-                <span className="empty-sub">open it as a popup — both click to watch together</span>
-                <button
-                    className="open-link"
-                    onClick={() => window.open(url, 'bonfire-watch', 'width=960,height=600,toolbar=0,menubar=0,location=0,noopener')}
-                >
-                    open popup <i className="fa-solid fa-arrow-up-right-from-square" />
-                </button>
+            <div className="grid h-full place-items-center bg-cocoa-900 text-center">
+                <div className="space-y-3">
+                    <i className="fa-solid fa-circle-exclamation text-2xl text-berry-300" />
+                    <div>
+                        <p className="text-base font-bold text-ember-50">this video cannot be embedded</p>
+                        <p className="text-sm font-semibold text-ember-100/45">open it as a popup and keep watching together</p>
+                    </div>
+                    <button
+                        className="inline-flex items-center gap-2 rounded-full bg-ember-400 px-4 py-2 text-sm font-bold text-white hover:bg-ember-500"
+                        onClick={() => window.open(url, 'bonfire-watch', 'width=960,height=600,toolbar=0,menubar=0,location=0,noopener')}
+                    >
+                        open popup <i className="fa-solid fa-arrow-up-right-from-square" />
+                    </button>
+                </div>
             </div>
         )
     }
@@ -129,7 +133,7 @@ export const Player = forwardRef<any, Props>(({ url, onPlay, onPause, onSeek }, 
                 },
             }}
             style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}
-            className="player"
+            className="flex h-full w-full flex-col [&>div]:h-full [&>div]:w-full [&_iframe]:h-full [&_iframe]:w-full"
         />
     )
 })

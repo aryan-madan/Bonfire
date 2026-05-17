@@ -43,8 +43,10 @@ function toGroups(messages: Message[], name: string): Group[] {
     return groups
 }
 
-function avatar(n: string): string {
-    return n.slice(0, 2).toUpperCase()
+function av(n: string) { return n.slice(0, 2).toUpperCase() }
+
+function isYT(url: string) {
+    return /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)/.test(url.trim())
 }
 
 export function Room({ peer, name, leave }: Props) {
@@ -52,9 +54,11 @@ export function Room({ peer, name, leave }: Props) {
     const [queue, setQueue] = useState<Item[]>([])
     const [current, setCurrent] = useState<Item | null>(null)
     const [draft, setDraft] = useState('')
-    const [input, setInput] = useState('')
-    const [adding, setAdding] = useState(false)
+    const [ytInput, setYtInput] = useState('')
+    const [ytError, setYtError] = useState(false)
+    const [showQueue, setShowQueue] = useState(false)
     const [other, setOther] = useState('')
+    const [otherLeft, setOtherLeft] = useState(false)
     const bottom = useRef<HTMLDivElement>(null)
     const player = useRef<any>(null)
 
@@ -66,24 +70,50 @@ export function Room({ peer, name, leave }: Props) {
         if (msg.kind === 'play') player.current?.playVideo()
         if (msg.kind === 'pause') player.current?.pauseVideo()
         if (msg.kind === 'seek') player.current?.seekTo(msg.payload as number, true)
-        if (msg.kind === 'name') setOther((msg.payload as any).name)
+        if (msg.kind === 'name') {
+            setOther((msg.payload as any).name)
+            setOtherLeft(false)
+        }
     }, [])
 
     useEffect(() => {
         if (peer.channel) peer.channel.onmessage = e => receive(e.data)
         peer.onmessage = receive
+
+        const channel = peer.channel
+        if (channel) {
+            const origClose = channel.onclose
+            channel.onclose = (e) => {
+                setOtherLeft(true)
+                if (typeof origClose === 'function') origClose.call(channel, e)
+            }
+        }
+
+        peer.conn.onconnectionstatechange = () => {
+            const state = peer.conn.connectionState
+            if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                setOtherLeft(true)
+            }
+        }
     }, [receive])
 
     useEffect(() => {
-        const timer = setTimeout(() => send(peer, pack('name', { name })), 600)
-        return () => clearTimeout(timer)
+        const t = setTimeout(() => send(peer, pack('name', { name })), 600)
+        return () => clearTimeout(t)
     }, [])
 
     useEffect(() => {
         bottom.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
 
-    function broadcast(kind: Parameters<typeof pack>[0], payload: unknown) {
+    useEffect(() => {
+        if (current) {
+            const t = setTimeout(() => player.current?.playVideo(), 800)
+            return () => clearTimeout(t)
+        }
+    }, [current?.id])
+
+    function bc(kind: Parameters<typeof pack>[0], payload: unknown) {
         send(peer, pack(kind, payload))
     }
 
@@ -91,180 +121,214 @@ export function Room({ peer, name, leave }: Props) {
         if (!draft.trim()) return
         const m: Message = { id: crypto.randomUUID(), sender: name, text: draft.trim(), stamp: Date.now() }
         setMessages(prev => [...prev, m])
-        broadcast('chat', m)
+        bc('chat', m)
         setDraft('')
     }
 
-    function addToQueue() {
-        if (!input.trim()) return
-        const item: Item = { id: crypto.randomUUID().slice(0, 8), url: input.trim() }
+    function addYT() {
+        const url = ytInput.trim()
+        if (!url) return
+        if (!isYT(url)) { setYtError(true); setTimeout(() => setYtError(false), 1800); return }
+        const item: Item = { id: crypto.randomUUID().slice(0, 8), url }
         const next = [...queue, item]
-        setQueue(next)
-        broadcast('queue', next)
-        setInput('')
-        setAdding(false)
+        setQueue(next); bc('queue', next)
+        setYtInput('')
         if (!current) advance(item, next)
     }
 
     function advance(item: Item, remaining: Item[]) {
-        setCurrent(item)
-        broadcast('next', item)
+        setCurrent(item); bc('next', item)
         const rest = remaining.filter(i => i.id !== item.id)
-        setQueue(rest)
-        broadcast('queue', rest)
+        setQueue(rest); bc('queue', rest)
     }
 
     function skip() {
-        if (queue.length === 0) { setCurrent(null); broadcast('next', null); return }
+        if (!queue.length) { setCurrent(null); bc('next', null); return }
         advance(queue[0], queue)
     }
 
-    function stopVideo() {
-        setCurrent(null); broadcast('next', null)
-        setQueue([]); broadcast('queue', [])
+    function stop() {
+        setCurrent(null); bc('next', null)
+        setQueue([]); bc('queue', [])
     }
 
     const groups = toGroups(messages, name)
 
     return (
-        <div className="room">
+        <div className="r-shell">
 
-            <div className="rail">
-                <div className="rail-logo">
-                    <i className="fa-solid fa-fire" />
-                </div>
-<div className="rail-members" style={{ justifyContent: current ? 'flex-start' : 'center' }}>
-    <div className="avatar mine" title={name}>{avatar(name)}</div>
-    {other && <div className="avatar them" title={other}>{avatar(other)}</div>}
-</div>
-                <div className="rail-bottom">
-                    <button className="rail-btn danger" onClick={leave} title="leave">
-                        <i className="fa-solid fa-phone-slash" />
+            <div className="r-sidebar">
+                <div className="r-sb-top">
+                    <div className="r-sb-brand">
+                        <i className="fa-solid fa-fire" />
+                        <span>bonfire</span>
+                    </div>
+                    <button className="r-leave" onClick={leave} title="leave">
+                        <i className="fa-solid fa-arrow-right-from-bracket" />
                     </button>
                 </div>
-            </div>
 
-            <div className="sidebar">
-                <div className="sidebar-head">
-                    <span className="channel-name">
-                        <i className="fa-solid fa-fire-flame-curved" /> bonfire
-                    </span>
-                    {other && (
-                        <div className="in-call">
-                            <span className="online-dot" />
-                            <span>{name}</span>
-                            <span style={{ opacity: 0.4 }}>&</span>
-                            <span>{other}</span>
-                        </div>
+                <div className="r-who">
+                    <div className="r-av r-av--me" title={name}>{av(name)}</div>
+                    {other && !otherLeft
+                        ? <div className="r-av r-av--them" title={other}>{av(other)}</div>
+                        : otherLeft
+                            ? <div className="r-av r-av--left" title={`${other} left`}>{av(other)}</div>
+                            : <div className="r-av r-av--ghost"><i className="fa-solid fa-ellipsis" /></div>
+                    }
+                    {other && !otherLeft && <span className="r-who-names">{name} & {other}</span>}
+                    {otherLeft && (
+                        <span className="r-who-left">
+                            {other} left
+                            <span className="r-rejoin-hint"> · share the link again to rejoin</span>
+                        </span>
                     )}
                 </div>
 
-                <div className="msgs">
+                {otherLeft && (
+                    <div className="r-left-banner">
+                        <i className="fa-solid fa-circle-exclamation" />
+                        <span>{other} disconnected. They can rejoin using the same room link.</span>
+                    </div>
+                )}
+
+                <div className="r-msgs">
                     {groups.length === 0 && (
-                        <div className="empty-chat">
-                            <i className="fa-solid fa-fire" style={{ fontSize: '1.5rem', marginBottom: '0.5rem', display: 'block' }} />
-                            say something :3
+                        <div className="r-msgs-empty">
+                            <i className="fa-regular fa-comment" />
+                            <span>no messages yet</span>
                         </div>
                     )}
                     {groups.map(g => (
-                        <div key={g.id} className={`group ${g.mine ? 'mine' : 'theirs'}`}>
-                            {!g.mine && <span className="sender">{g.sender}</span>}
-                            <div className="bubbles">
-                                {g.texts.map((t, i) => {
-                                    const first = i === 0
-                                    const last = i === g.texts.length - 1
-                                    const br = g.mine
-                                        ? `${first ? '1.2rem' : '0.3rem'} 0.3rem ${last ? '1.2rem' : '0.3rem'} 1.2rem`
-                                        : `0.3rem ${first ? '1.2rem' : '0.3rem'} ${last ? '1.2rem' : '0.3rem'} 0.3rem`
-                                    return <span key={i} className="bubble" style={{ borderRadius: br }}>{t}</span>
-                                })}
+                        <div key={g.id} className={`r-group ${g.mine ? 'r-group--mine' : ''}`}>
+                            {!g.mine && <div className="r-group-av">{av(g.sender)}</div>}
+                            <div className="r-group-col">
+                                {!g.mine && <span className="r-group-name">{g.sender}</span>}
+                                <div className="r-bubbles">
+                                    {g.texts.map((t, i) => <span key={i} className="r-bubble">{t}</span>)}
+                                </div>
                             </div>
                         </div>
                     ))}
                     <div ref={bottom} />
                 </div>
 
-                <div className="composer-wrap">
-                    {adding ? (
-                        <div className="composer adder-mode">
-                            <i className="fa-brands fa-youtube" style={{ color: 'var(--rose)' }} />
-                            <input
-                                className="draft"
-                                value={input}
-                                autoFocus
-                                onChange={e => setInput(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') addToQueue(); if (e.key === 'Escape') setAdding(false) }}
-                                placeholder="paste youtube url..."
+                <div className="r-composer">
+                    <input
+                        className="r-draft"
+                        value={draft}
+                        onChange={e => setDraft(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && sendMsg()}
+                        placeholder={other && !otherLeft ? `message ${other}…` : 'say something…'}
+                    />
+                    <button className="r-send" onClick={sendMsg} disabled={!draft.trim()}>
+                        <i className="fa-solid fa-paper-plane" />
+                    </button>
+                </div>
+            </div>
+
+            <div className="r-main">
+                <div className="r-topbar">
+                    <div className="r-tb-left">
+                        {current
+                            ? <span className="r-watching-pill"><i className="fa-solid fa-circle-play" /> watching together</span>
+                            : <span className="r-idle-label">bonfire room</span>
+                        }
+                    </div>
+                    <div className="r-tb-right">
+                        {current && (
+                            <>
+                                <button className="r-tbtn" onClick={skip} title="skip">
+                                    <i className="fa-solid fa-forward-step" />
+                                </button>
+                                <button className="r-tbtn r-tbtn--red" onClick={stop} title="stop">
+                                    <i className="fa-solid fa-stop" />
+                                </button>
+                            </>
+                        )}
+                        <button
+                            className={`r-tbtn ${showQueue ? 'r-tbtn--on' : ''}`}
+                            onClick={() => setShowQueue(v => !v)}
+                            title="queue"
+                        >
+                            <i className="fa-brands fa-youtube" />
+                            {queue.length > 0 && <span className="r-badge">{queue.length}</span>}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="r-stage">
+                    {current ? (
+                        <div className="r-player-wrap">
+                            <Player
+                                url={current.url}
+                                ref={player}
+                                onPlay={() => bc('play', null)}
+                                onPause={() => bc('pause', null)}
+                                onSeek={t => bc('seek', t)}
                             />
-                            <button className="send" onClick={addToQueue} disabled={!input.trim()}>add</button>
-                            <button className="cancel" onClick={() => setAdding(false)}>
-                                <i className="fa-solid fa-xmark" />
-                            </button>
                         </div>
                     ) : (
-                        <div className="composer">
-                            <button className="icon-btn" onClick={() => setAdding(true)} title="add video">
-                                <i className="fa-solid fa-circle-play" />
-                            </button>
-                            <input
-                                className="draft"
-                                value={draft}
-                                onChange={e => setDraft(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && sendMsg()}
-                                placeholder={`message bonfire...`}
-                            />
-                            {draft.trim() && (
-                                <button className="send" onClick={sendMsg}>
-                                    <i className="fa-solid fa-paper-plane" />
+                        <div className="r-idle-stage">
+                            <div className="r-idle-fire"><i className="fa-solid fa-fire" /></div>
+                            <p className="r-idle-msg">
+                                {otherLeft
+                                    ? `${other} left the room`
+                                    : other
+                                        ? 'add a youtube video to watch together'
+                                        : 'waiting for someone to join…'
+                                }
+                            </p>
+                            {other && !otherLeft && (
+                                <button className="r-idle-add" onClick={() => setShowQueue(true)}>
+                                    <i className="fa-brands fa-youtube" /> add video
                                 </button>
                             )}
                         </div>
                     )}
                 </div>
-            </div>
 
-            <div className="main">
-                <div className="main-head">
-                    <span className="main-title">
-                        {current ? 'watching together' : 'bonfire room'}
-                    </span>
-                    <div className="main-actions">
-                        {current && (
-                            <>
-                                <button className="top-btn" onClick={skip}>
-                                    <i className="fa-solid fa-forward-step" /> skip
-                                </button>
-                                <button className="top-btn danger" onClick={stopVideo}>
-                                    <i className="fa-solid fa-stop" /> stop
-                                </button>
-                            </>
-                        )}
-                    </div>
-                </div>
-
-                <div className="stage">
-                    <Player
-                        url={current?.url ?? null}
-                        ref={player}
-                        onPlay={() => broadcast('play', null)}
-                        onPause={() => broadcast('pause', null)}
-                        onSeek={t => broadcast('seek', t)}
-                    />
-                </div>
-
-                {queue.length > 0 && (
-                    <div className="queue-bar">
-                        <span className="queue-label">
-                            <i className="fa-solid fa-list" /> up next
-                        </span>
-                        <div className="queue-items">
-                            {queue.map((item, i) => (
-                                <div key={item.id} className="qitem">
-                                    <span className="qnum">{i + 1}</span>
-                                    <span className="qurl">{item.url}</span>
-                                </div>
-                            ))}
+                {showQueue && (
+                    <div className="r-queue-panel">
+                        <div className="r-qp-head">
+                            <span><i className="fa-brands fa-youtube" /> queue</span>
+                            <button className="r-qp-close" onClick={() => setShowQueue(false)}>
+                                <i className="fa-solid fa-xmark" />
+                            </button>
                         </div>
+
+                        <div className={`r-qp-adder ${ytError ? 'r-qp-adder--err' : ''}`}>
+                            <input
+                                className="r-qp-input"
+                                value={ytInput}
+                                autoFocus
+                                onChange={e => { setYtInput(e.target.value); setYtError(false) }}
+                                onKeyDown={e => e.key === 'Enter' && addYT()}
+                                placeholder={ytError ? 'youtube links only…' : 'paste a youtube url…'}
+                            />
+                            <button className="r-qp-add" onClick={addYT} disabled={!ytInput.trim()}>
+                                add
+                            </button>
+                        </div>
+
+                        {current && (
+                            <div className="r-qp-np">
+                                <span className="r-qp-np-dot" />
+                                <span className="r-qp-np-url">{current.url}</span>
+                                <span className="r-qp-np-tag">playing</span>
+                            </div>
+                        )}
+
+                        {queue.map((item, i) => (
+                            <div className="r-qp-item" key={item.id}>
+                                <span className="r-qp-num">{i + 1}</span>
+                                <span className="r-qp-url">{item.url}</span>
+                            </div>
+                        ))}
+
+                        {!current && !queue.length && (
+                            <p className="r-qp-empty">nothing here yet</p>
+                        )}
                     </div>
                 )}
             </div>

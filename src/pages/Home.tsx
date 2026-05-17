@@ -2,18 +2,32 @@ import { useState, useEffect, useRef } from 'react'
 import { host, join, poll, type Peer } from '../lib/rtc'
 import { Room } from './Room'
 
-type Mode = 'idle' | 'create' | 'join'
+type Mode = 'idle' | 'create' | 'joining'
 type Status = 'idle' | 'generating' | 'waiting' | 'connecting' | 'connected'
 
 export function Home() {
     const [mode, setMode] = useState<Mode>('idle')
-    const [name, setName] = useState(() => localStorage.getItem('name') ?? '')
+    const [name, setName] = useState(() => localStorage.getItem('bf-name') ?? '')
     const [status, setStatus] = useState<Status>('idle')
+    const [link, setLink] = useState('')
     const peer = useRef<Peer | null>(null)
 
-    function save(value: string) {
-        setName(value)
-        localStorage.setItem('name', value)
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.hash.slice(1))
+        const room = params.get('room')
+        if (room && name.trim()) {
+            window.history.replaceState(null, '', window.location.pathname)
+            setStatus('connecting')
+            setMode('joining')
+            join(room, () => setStatus('connected'), () => { }).then(p => { peer.current = p })
+        } else if (room) {
+            window.history.replaceState(null, '', window.location.pathname)
+        }
+    }, [])
+
+    function saveName(v: string) {
+        setName(v)
+        localStorage.setItem('bf-name', v)
     }
 
     function cleanup() {
@@ -21,20 +35,28 @@ export function Home() {
         peer.current = null
         setMode('idle')
         setStatus('idle')
+        setLink('')
         window.history.replaceState(null, '', window.location.pathname)
     }
 
     function onopen() { setStatus('connected') }
-    function onmessage(data: string) { console.log('msg', data) }
 
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.hash.slice(1))
-        const room = params.get('room')
-        if (room) {
-            window.history.replaceState(null, '', window.location.pathname)
-            setMode('join')
+    function extractRoom(raw: string): string | null {
+        try {
+            const url = new URL(raw.trim())
+            return new URLSearchParams(url.hash.slice(1)).get('room')
+        } catch { return null }
+    }
+
+    function handleLinkChange(v: string) {
+        setLink(v)
+        const room = extractRoom(v)
+        if (room && name.trim()) {
+            setStatus('connecting')
+            setMode('joining')
+            join(room, onopen, () => { }).then(p => { peer.current = p })
         }
-    }, [])
+    }
 
     const named = name.trim().length > 0
 
@@ -42,111 +64,91 @@ export function Home() {
         return <Room peer={peer.current} name={name} leave={cleanup} />
     }
 
-    function handleJoinLink(link: string) {
-        try {
-            const url = new URL(link)
-            const room = new URLSearchParams(url.hash.slice(1)).get('room')
-            if (!room) return
-            setStatus('connecting')
-            join(room, onopen, onmessage).then(p => { peer.current = p })
-        } catch { }
-    }
-
     return (
-        <main className="home">
-            <div className="content">
-                <div className="logo pop pop-1">
-                    <i className="fa-solid fa-fire" /> bonfire
+        <main className="h-shell">
+            <div className="h-card">
+                <div className="h-logo">
+                    bonfire
                 </div>
-                <h1 className="title pop pop-2">
-                    watchy<br />watchy :3
-                </h1>
-                <div className="panel pop pop-3">
-                    <div className="wrap">
-                        <i className="fa-solid fa-user field-icon" />
-                        <input
-                            className="field"
-                            value={name}
-                            onChange={e => save(e.target.value)}
-                            placeholder="your name"
-                            maxLength={32}
-                        />
-                    </div>
-                    <div className="inner">
-                        {mode === 'idle' && (
-                            <MeetBar
-                                named={named}
-                                onNew={() => setMode('create')}
-                                onJoinSubmit={handleJoinLink}
+
+                <div className="h-hero">
+                    <h1 className="h-title">watch<br />together</h1>
+                    <p className="h-sub">p2p · no accounts · just you two</p>
+                </div>
+
+                <div className="h-form">
+                    <Field
+                        label="your name"
+                        value={name}
+                        onChange={saveName}
+                        placeholder="what do people call you?"
+                        autoFocus
+                    />
+
+                    {mode === 'idle' && (
+                        <div className="h-actions">
+                            <button
+                                className="h-btn-primary"
+                                disabled={!named}
+                                onClick={() => setMode('create')}
+                            >
+                                new room
+                            </button>
+                            <Field
+                                label="invite link"
+                                value={link}
+                                onChange={handleLinkChange}
+                                placeholder="paste an invite link…"
+                                disabled={!named}
                             />
-                        )}
-                        {mode === 'create' && (
-                            <Create peer={peer} setStatus={setStatus} onopen={onopen} onmessage={onmessage} back={cleanup} />
-                        )}
-                        {mode === 'join' && (
-                            <Join peer={peer} setStatus={setStatus} onopen={onopen} onmessage={onmessage} back={cleanup} />
-                        )}
-                    </div>
+                        </div>
+                    )}
+
+                    {mode === 'create' && (
+                        <CreateRoom peer={peer} setStatus={setStatus} onopen={onopen} back={cleanup} />
+                    )}
+
+                    {mode === 'joining' && (
+                        <div className="h-status">
+                            <div className="h-spinner" />
+                            <span>{status === 'connecting' ? 'connecting…' : 'joining…'}</span>
+                            <button className="h-text-btn" onClick={cleanup}>cancel</button>
+                        </div>
+                    )}
                 </div>
-                <p className="sub pop pop-3">no accounts · no servers · just you two</p>
             </div>
         </main>
     )
 }
 
-function MeetBar({ named, onNew, onJoinSubmit }: {
-    named: boolean
-    onNew: () => void
-    onJoinSubmit: (link: string) => void
+function Field({ label, value, onChange, placeholder, disabled = false, autoFocus = false }: {
+    label: string
+    value: string
+    onChange: (v: string) => void
+    placeholder: string
+    disabled?: boolean
+    autoFocus?: boolean
 }) {
-    const [link, setLink] = useState('')
-    const hasLink = link.trim().length > 0
-
-    function tryJoin() {
-        if (hasLink) onJoinSubmit(link.trim())
-    }
-
     return (
-        <div className="meet-bar pop">
-            <button
-                className="meet-new"
-                onClick={onNew}
-                disabled={!named}
-            >
-                <i className="fa-solid fa-fire" />
-                new room
-            </button>
-
-            <div className="meet-input-wrap">
-                <i className="fa-solid fa-keyboard meet-input-icon" />
-                <input
-                    className="meet-input"
-                    value={link}
-                    onChange={e => setLink(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && tryJoin()}
-                    placeholder="enter a code or link"
-                    disabled={!named}
-                />
-            </div>
-
-            <button
-                className={`meet-join ${hasLink && named ? 'active' : ''}`}
-                onClick={tryJoin}
-                disabled={!named || !hasLink}
-            >
-                join
-            </button>
+        <div className="h-field-wrap">
+            <label className="h-label">{label}</label>
+            <input
+                className="h-field"
+                value={value}
+                onChange={e => onChange(e.target.value)}
+                placeholder={placeholder}
+                disabled={disabled}
+                autoFocus={autoFocus}
+                maxLength={32}
+            />
         </div>
     )
 }
 
-function Create({
-    peer, setStatus, onopen, onmessage, back
-}: {
+function CreateRoom({ peer, setStatus, onopen, back }: {
     peer: React.MutableRefObject<Peer | null>
     setStatus: (s: Status) => void
     onopen: () => void
-    onmessage: (data: string) => void
     back: () => void
 }) {
     const [invite, setInvite] = useState('')
@@ -157,7 +159,7 @@ function Create({
         if (started.current) return
         started.current = true
         setStatus('generating')
-        host(onopen, onmessage).then(({ peer: p, link, room }) => {
+        host(onopen, () => { }).then(({ peer: p, link, room }) => {
             peer.current = p
             setInvite(link)
             setStatus('waiting')
@@ -175,85 +177,25 @@ function Create({
         try {
             const u = new URL(url)
             const room = new URLSearchParams(u.hash.slice(1)).get('room') ?? ''
-            return `${u.host}/#room=${room}`
+            return `${u.host}/#room=${room.slice(0, 10)}…`
         } catch { return url }
     }
 
     return (
-        <div className="mode pop">
-            <div className="wrap link" onClick={copy}>
-                <i className="fa-solid fa-link field-icon" />
-                <span className="field" style={{ cursor: 'pointer' }}>
-                    {invite ? truncate(invite) : 'generating...'}
-                </span>
-                <i className={`fa-solid ${copied ? 'fa-check' : 'fa-copy'} copy-icon`} />
+        <div className="h-create">
+            <div className="h-waiting">
+                <div className="h-spinner" />
+                <span>waiting for them to join…</span>
             </div>
-            <div className="row">
-                <span className="hint"><i className="fa-solid fa-clock" /> waiting for them...</span>
-                <button className="home-btn ghost" onClick={back}>cancel</button>
-            </div>
-        </div>
-    )
-}
-
-function Join({
-    peer, setStatus, onopen, onmessage, back
-}: {
-    peer: React.MutableRefObject<Peer | null>
-    setStatus: (s: Status) => void
-    onopen: () => void
-    onmessage: (data: string) => void
-    back: () => void
-}) {
-    const [link, setLink] = useState('')
-    const started = useRef(false)
-
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.hash.slice(1))
-        const room = params.get('room')
-        if (room && !started.current) {
-            started.current = true
-            connect(room)
-        }
-    }, [])
-
-    async function connect(room: string) {
-        setStatus('connecting')
-        const p = await join(room, onopen, onmessage)
-        peer.current = p
-    }
-
-    async function manual() {
-        if (!link.trim() || started.current) return
-        started.current = true
-        try {
-            const url = new URL(link.trim())
-            const room = new URLSearchParams(url.hash.slice(1)).get('room')
-            if (!room) return
-            await connect(room)
-        } catch { }
-    }
-
-    return (
-        <div className="mode pop">
-            <div className="wrap">
-                <i className="fa-solid fa-link field-icon" />
-                <input
-                    className="field"
-                    value={link}
-                    onChange={e => setLink(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && manual()}
-                    placeholder="paste invite link"
-                    autoFocus
-                />
-            </div>
-            <div className="row">
-                <button className="home-btn" disabled={!link.trim()} onClick={manual}>
-                    <i className="fa-solid fa-arrow-right" /> join
-                </button>
-                <span className="divider">/</span>
-                <button className="home-btn ghost" onClick={back}>back</button>
-            </div>
+            <button
+                className={`h-invite-btn${copied ? ' h-invite-btn--ok' : ''}`}
+                onClick={copy}
+                disabled={!invite}
+            >
+                <span className="h-invite-url">{invite ? truncate(invite) : 'generating…'}</span>
+                <span className="h-invite-cta">{copied ? 'copied!' : 'copy link'}</span>
+            </button>
+            <button className="h-text-btn" onClick={back}>cancel</button>
         </div>
     )
 }
