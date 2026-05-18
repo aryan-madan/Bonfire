@@ -31,6 +31,10 @@ interface Props {
     leave: () => void
 }
 
+type SinkAudio = HTMLAudioElement & {
+    setSinkId?: (id: string) => Promise<void>
+}
+
 const toGroups = (messages: Message[], name: string): Group[] => {
     const groups: Group[] = []
     for (const m of messages) {
@@ -110,6 +114,30 @@ const bubbleRadius = (mine: boolean, total: number, i: number): string => {
     return 'rounded-[1.15rem] rounded-l-[0.35rem]'
 }
 
+const audioConstraints = (deviceId?: string): MediaTrackConstraints => ({
+    deviceId: deviceId ? { exact: deviceId } : undefined,
+    echoCancellation: { ideal: true },
+    noiseSuppression: { ideal: true },
+    autoGainControl: { ideal: false },
+    channelCount: { ideal: 1 },
+    sampleRate: { ideal: 48000 },
+})
+
+const tuneAudio = async (conn: RTCPeerConnection) => {
+    for (const sender of conn.getSenders()) {
+        if (sender.track?.kind !== 'audio') continue
+        sender.track.contentHint = 'speech'
+        try {
+            const params = sender.getParameters()
+            if (!params.encodings?.length) params.encodings = [{}]
+            params.encodings = params.encodings.map(enc => ({ ...enc, maxBitrate: 64000 }))
+            await sender.setParameters(params)
+        } catch {
+            return
+        }
+    }
+}
+
 export const Room = ({ peer, name, leave }: Props) => {
     const [messages, setMessages] = useState<Message[]>([])
     const [queue, setQueue] = useState<Item[]>([])
@@ -131,6 +159,10 @@ export const Room = ({ peer, name, leave }: Props) => {
     const [videoHovered, setVideoHovered] = useState(false)
     const [sidebarOpen, setSidebarOpen] = useState(true)
     const [chatOpen, setChatOpen] = useState(true)
+    const [mics, setMics] = useState<MediaDeviceInfo[]>([])
+    const [speakers, setSpeakers] = useState<MediaDeviceInfo[]>([])
+    const [micDevice, setMicDevice] = useState('')
+    const [speakerDevice, setSpeakerDevice] = useState('')
     const bottom = useRef<HTMLDivElement>(null)
     const player = useRef<PlayerHandle>(null)
     const localVid = useRef<HTMLVideoElement>(null)
@@ -145,6 +177,13 @@ export const Room = ({ peer, name, leave }: Props) => {
     const bc = useCallback((kind: Parameters<typeof pack>[0], payload: unknown) => {
         send(peer, pack(kind, payload))
     }, [peer])
+
+    const refreshDevices = useCallback(async () => {
+        if (!navigator.mediaDevices?.enumerateDevices) return
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        setMics(devices.filter(d => d.kind === 'audioinput'))
+        setSpeakers(devices.filter(d => d.kind === 'audiooutput'))
+    }, [])
 
     const makingOffer = useRef(false)
     const ignoreOffer = useRef(false)
@@ -186,7 +225,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         if (msg.kind === 'pause') player.current?.pauseVideo()
         if (msg.kind === 'seek') player.current?.seekTo(msg.payload as number, true)
         if (msg.kind === 'media-offer') void answer(msg.payload as RTCSessionDescriptionInit)
-        if (msg.kind === 'media-answer') void peer.conn.setRemoteDescription(msg.payload as RTCSessionDescriptionInit).catch(() => {})
+        if (msg.kind === 'media-answer') void peer.conn.setRemoteDescription(msg.payload as RTCSessionDescriptionInit).catch(() => { })
         if (msg.kind === 'media-state') {
             const state = msg.payload as { camOn?: boolean; micOn?: boolean }
             setRemoteCam(!!state.camOn)
@@ -213,7 +252,7 @@ export const Room = ({ peer, name, leave }: Props) => {
             setRemote(stream)
             if (remoteAudioEl.current) {
                 remoteAudioEl.current.srcObject = stream
-                void remoteAudioEl.current.play().catch(() => {})
+                void remoteAudioEl.current.play().catch(() => { })
             }
         }
         const handleClose = () => {
@@ -223,6 +262,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         const handleConnectionStateChange = () => {
             const state = conn.connectionState
             if (state === 'connected') {
+                void tuneAudio(conn)
                 if (timer.current) window.clearTimeout(timer.current)
                 timer.current = null
                 setLeft(false)
@@ -241,14 +281,16 @@ export const Room = ({ peer, name, leave }: Props) => {
         conn.addEventListener('track', handleTrack)
         conn.addEventListener('negotiationneeded', handleNegotiationNeeded)
         conn.addEventListener('connectionstatechange', handleConnectionStateChange)
+        navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices)
         return () => {
             channel?.removeEventListener('message', handleMessage)
             channel?.removeEventListener('close', handleClose)
             conn.removeEventListener('track', handleTrack)
             conn.removeEventListener('negotiationneeded', handleNegotiationNeeded)
             conn.removeEventListener('connectionstatechange', handleConnectionStateChange)
+            navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices)
         }
-    }, [negotiate, peer, receive])
+    }, [negotiate, peer, receive, refreshDevices])
 
     useEffect(() => {
         const t = setTimeout(() => send(peer, pack('name', { name })), 600)
@@ -274,13 +316,19 @@ export const Room = ({ peer, name, leave }: Props) => {
         if (!remote) return
         if (remoteAudioEl.current) {
             remoteAudioEl.current.srcObject = remote
-            void remoteAudioEl.current.play().catch(() => {})
+            void remoteAudioEl.current.play().catch(() => { })
         }
         if (remoteVid.current) {
             const videoOnly = new MediaStream(remote.getVideoTracks())
             remoteVid.current.srcObject = videoOnly
         }
     }, [remote])
+
+    useEffect(() => {
+        const audio = remoteAudioEl.current as SinkAudio | null
+        if (!audio?.setSinkId || !speakerDevice) return
+        void audio.setSinkId(speakerDevice).catch(() => { })
+    }, [speakerDevice])
 
     useEffect(() => {
         const remoteAudio = remoteAudioEl.current
@@ -299,14 +347,10 @@ export const Room = ({ peer, name, leave }: Props) => {
             let stream = localRef.current
             if (!stream) {
                 stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                        channelCount: 1,
-                    },
+                    audio: audioConstraints(micDevice),
                     video: withVideo,
                 })
+                void refreshDevices()
             } else if (withVideo && !stream.getVideoTracks().length) {
                 const vid = await navigator.mediaDevices.getUserMedia({ video: true })
                 vid.getVideoTracks().forEach(t => stream?.addTrack(t))
@@ -318,6 +362,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                 }
                 track.enabled = true
             }
+            await tuneAudio(peer.conn)
             localRef.current = stream
             setLocal(stream)
             const nextMic = stream.getAudioTracks().some(t => t.enabled)
@@ -327,6 +372,43 @@ export const Room = ({ peer, name, leave }: Props) => {
             bc('media-state', { micOn: nextMic, camOn: nextCam })
         } catch {
             setError('camera or microphone permission was blocked')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const switchMic = async (deviceId: string) => {
+        setMicDevice(deviceId)
+        const stream = localRef.current
+        if (!stream?.getAudioTracks().length) return
+        setBusy(true)
+        setError('')
+        try {
+            const next = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(deviceId), video: false })
+            const track = next.getAudioTracks()[0]
+            if (!track) return
+            track.enabled = mic
+            track.contentHint = 'speech'
+            const sender = peer.conn.getSenders().find(s => s.track?.kind === 'audio')
+            if (sender) {
+                await sender.replaceTrack(track)
+            } else {
+                peer.conn.addTrack(track, stream)
+                trackIds.current.add(track.id)
+            }
+            stream.getAudioTracks().forEach(t => {
+                t.stop()
+                stream.removeTrack(t)
+                trackIds.current.delete(t.id)
+            })
+            stream.addTrack(track)
+            trackIds.current.add(track.id)
+            await tuneAudio(peer.conn)
+            setLocal(new MediaStream(stream.getTracks()))
+            localRef.current = stream
+            void refreshDevices()
+        } catch {
+            setError('microphone switch failed')
         } finally {
             setBusy(false)
         }
@@ -467,11 +549,11 @@ export const Room = ({ peer, name, leave }: Props) => {
                     className="flex flex-col gap-3 shrink-0 overflow-hidden transition-all duration-300 ease-in-out"
                     style={{ width: sidebarOpen ? '260px' : '0px', opacity: sidebarOpen ? 1 : 0, marginRight: sidebarOpen ? '0' : '-12px' }}
                 >
-                    <div className="rounded-[1.5rem] bg-plum-900 overflow-hidden w-[260px]">
+                    <div className="w-full rounded-[1.5rem] bg-plum-900 overflow-hidden">
                         <div className="px-4 pt-3 pb-1">
                             <span className="text-xs font-bold text-ember-50">call</span>
                         </div>
-                        <div className="px-3 pb-3 flex flex-col gap-2">
+                        <div className="w-full px-4 pb-4 flex flex-col gap-2 box-border">
                             <CallTile
                                 label={other || 'friend'}
                                 vidRef={remoteVid}
@@ -479,6 +561,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                                 muted={false}
                                 mic={remoteMic}
                                 hasStream={!!remote}
+                                nameKnown={!!other}
                             />
                             <CallTile
                                 label={name || 'you'}
@@ -488,11 +571,12 @@ export const Room = ({ peer, name, leave }: Props) => {
                                 mic={mic}
                                 hasStream={!!local}
                                 isMe
+                                nameKnown
                             />
                             {!local ? (
-                                <div className="grid grid-cols-2 gap-2 mt-1">
+                                <div className="grid grid-cols-2 gap-2 mt-1 w-full">
                                     <button
-                                        className="rounded-full bg-cocoa-800 py-2.5 text-xs font-bold text-ember-100/70 hover:bg-cocoa-700 disabled:opacity-40 transition-colors"
+                                        className="w-full rounded-full bg-cocoa-800 py-2 text-xs font-bold text-ember-100/70 hover:bg-cocoa-700 disabled:opacity-40 transition-colors"
                                         disabled={busy}
                                         onClick={() => startMedia(false)}
                                     >
@@ -500,7 +584,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                                         voice
                                     </button>
                                     <button
-                                        className="rounded-full bg-ember-400 py-2.5 text-xs font-bold text-white hover:bg-ember-500 disabled:opacity-40 transition-colors"
+                                        className="w-full rounded-full bg-ember-400 py-2 text-xs font-bold text-white hover:bg-ember-500 disabled:opacity-40 transition-colors"
                                         disabled={busy}
                                         onClick={() => startMedia(true)}
                                     >
@@ -509,19 +593,45 @@ export const Room = ({ peer, name, leave }: Props) => {
                                     </button>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-2 gap-2 mt-1">
-                                    <button
-                                        onClick={toggleMic}
-                                        className={`rounded-full py-2.5 text-xs font-bold transition-colors ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
-                                    >
-                                        <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
-                                    </button>
-                                    <button
-                                        onClick={toggleCam}
-                                        className={`rounded-full py-2.5 text-xs font-bold transition-colors ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
-                                    >
-                                        <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
-                                    </button>
+                                <div className="mt-1 flex flex-col gap-2 w-full">
+                                    <div className="grid grid-cols-2 gap-2 w-full">
+                                        <button
+                                            onClick={toggleMic}
+                                            className={`w-full rounded-full py-2 text-xs font-bold transition-colors ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
+                                        >
+                                            <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
+                                        </button>
+                                        <button
+                                            onClick={toggleCam}
+                                            className={`w-full rounded-full py-2 text-xs font-bold transition-colors ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
+                                        >
+                                            <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
+                                        </button>
+                                    </div>
+                                    {(mics.length > 1 || speakers.length > 1) && (
+                                        <div className="flex flex-col gap-1.5 w-full">
+                                            {mics.length > 1 && (
+                                                <DeviceSelect
+                                                    icon="fa-solid fa-microphone"
+                                                    value={micDevice}
+                                                    options={mics}
+                                                    fallback="Default microphone"
+                                                    onChange={switchMic}
+                                                    disabled={busy}
+                                                />
+                                            )}
+                                            {speakers.length > 1 && (
+                                                <DeviceSelect
+                                                    icon="fa-solid fa-headphones"
+                                                    value={speakerDevice}
+                                                    options={speakers}
+                                                    fallback="Default output"
+                                                    onChange={setSpeakerDevice}
+                                                    disabled={busy}
+                                                />
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -600,7 +710,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                                     {other && !left && (
                                         <QueueBar
                                             show={false}
-                                            setShow={() => {}}
+                                            setShow={() => { }}
                                             ytError={ytError}
                                             input={input}
                                             setInput={setInput}
@@ -694,7 +804,7 @@ export const Room = ({ peer, name, leave }: Props) => {
     )
 }
 
-const CallTile = ({ label, vidRef, active, muted, mic, hasStream, isMe = false }: {
+const CallTile = ({ label, vidRef, active, muted, mic, hasStream, isMe = false, nameKnown = false }: {
     label: string
     vidRef: React.RefObject<HTMLVideoElement | null>
     active: boolean
@@ -702,16 +812,17 @@ const CallTile = ({ label, vidRef, active, muted, mic, hasStream, isMe = false }
     mic: boolean
     hasStream: boolean
     isMe?: boolean
+    nameKnown?: boolean
 }) => (
-    <div className="relative overflow-hidden rounded-[1.25rem] bg-cocoa-800" style={{ aspectRatio: '16/9' }}>
+    <div
+        className="relative overflow-hidden rounded-[1.25rem] bg-cocoa-800"
+        style={{ aspectRatio: '16/9' }}
+    >
         <video ref={vidRef} autoPlay playsInline muted={muted} className={`h-full w-full object-cover ${active ? 'block' : 'hidden'}`} />
         {!active && (
-            <div className="grid h-full place-items-center py-4">
-                <div className="text-center space-y-2">
-                    <div className={`mx-auto h-14 w-14 rounded-full grid place-items-center text-base font-bold ${isMe ? 'bg-ember-400 text-white' : 'bg-mint-300 text-white'}`}>
-                        {av(label)}
-                    </div>
-                    <p className="text-xs font-bold text-ember-100/40">{label}</p>
+            <div className="absolute inset-0 flex items-center justify-center">
+                <div className={`h-12 w-12 rounded-full grid place-items-center text-base font-bold ${isMe ? 'bg-ember-400 text-white' : 'bg-mint-300 text-white'}`}>
+                    {nameKnown ? av(label) : <i className="fa-solid fa-user text-sm" />}
                 </div>
             </div>
         )}
@@ -719,9 +830,37 @@ const CallTile = ({ label, vidRef, active, muted, mic, hasStream, isMe = false }
             {hasStream && (
                 <i className={`fa-solid text-[0.55rem] ${mic ? 'fa-microphone text-ember-100/50' : 'fa-microphone-slash text-berry-300/80'}`} />
             )}
-            <span className="text-[0.6rem] font-bold text-ember-100/70">{label}</span>
+            <span className="text-[0.6rem] font-bold text-ember-100/70">
+                {nameKnown ? label : (isMe ? label : 'connecting...')}
+            </span>
         </div>
     </div>
+)
+
+const DeviceSelect = ({ icon, value, options, fallback, onChange, disabled }: {
+    icon: string
+    value: string
+    options: MediaDeviceInfo[]
+    fallback: string
+    onChange: (value: string) => void | Promise<void>
+    disabled?: boolean
+}) => (
+    <label className="flex items-center gap-2 rounded-xl bg-cocoa-800 px-2.5 py-1.5 text-ember-100/55 ring-1 ring-ember-100/5 focus-within:ring-ember-400/40">
+        <i className={`${icon} w-3 text-center text-[0.6rem] text-ember-100/35`} />
+        <select
+            className="min-w-0 flex-1 bg-transparent text-xs font-bold text-ember-100/70 outline-none disabled:opacity-50"
+            value={value}
+            onChange={e => { void onChange(e.target.value) }}
+            disabled={disabled}
+        >
+            <option value="">{fallback}</option>
+            {options.map(device => (
+                <option key={device.deviceId} value={device.deviceId}>
+                    {device.label || fallback}
+                </option>
+            ))}
+        </select>
+    </label>
 )
 
 const QueueBar = ({ show, setShow, ytError, input, setInput, setYtError, add, current, queue, onReorder, inline = false }: {
