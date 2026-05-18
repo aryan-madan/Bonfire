@@ -10,6 +10,7 @@ export const SIGNAL = 'https://bonfire.aryanmadan.workers.dev'
 export interface Peer {
     conn: RTCPeerConnection
     channel: RTCDataChannel | null
+    polite: boolean
     onopen: () => void
     onmessage: (data: string) => void
 }
@@ -29,7 +30,9 @@ function gather(conn: RTCPeerConnection): Promise<string> {
             return
         }
         conn.onicegatheringstatechange = () => {
-            if (conn.iceGatheringState === 'complete') resolve(encode(conn.localDescription!))
+            if (conn.iceGatheringState === 'complete') {
+                resolve(encode(conn.localDescription!))
+            }
         }
     })
 }
@@ -44,7 +47,7 @@ export async function host(
 ): Promise<{ peer: Peer; link: string; room: string }> {
     const conn = new RTCPeerConnection(ICE)
     const channel = conn.createDataChannel('bonfire')
-    const peer: Peer = { conn, channel, onopen, onmessage }
+    const peer: Peer = { conn, channel, polite: false, onopen, onmessage }
 
     channel.onopen = onopen
     channel.onmessage = e => onmessage(e.data)
@@ -52,9 +55,7 @@ export async function host(
     await conn.setLocalDescription(await conn.createOffer())
     const encoded = await gather(conn)
     const room = id()
-
     await fetch(`${SIGNAL}/${room}-offer`, { method: 'PUT', body: encoded })
-
     const link = `${window.location.origin}${window.location.pathname}#room=${room}`
     return { peer, link, room }
 }
@@ -84,7 +85,7 @@ export async function join(
     onmessage: (data: string) => void
 ): Promise<Peer> {
     const conn = new RTCPeerConnection(ICE)
-    const peer: Peer = { conn, channel: null, onopen, onmessage }
+    const peer: Peer = { conn, channel: null, polite: true, onopen, onmessage }
 
     conn.ondatachannel = e => {
         peer.channel = e.channel
@@ -95,13 +96,10 @@ export async function join(
     const res = await fetch(`${SIGNAL}/${room}-offer`)
     if (!res.ok) throw new Error('room not found')
     const raw = await res.text()
-
     await conn.setRemoteDescription(decode(raw))
     await conn.setLocalDescription(await conn.createAnswer())
     const encoded = await gather(conn)
-
     await fetch(`${SIGNAL}/${room}-answer`, { method: 'PUT', body: encoded })
-
     return peer
 }
 

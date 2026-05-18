@@ -27,11 +27,8 @@ function getID(url: string): string | null {
 
 export const Player = forwardRef<PlayerHandle, Props>(({ url, onPlay, onPause, onSeek }, ref) => {
     const playerRef = useRef<YouTubePlayer>(null)
-    // suppress: ignore ALL state changes for this many ms after a remote-driven action
     const suppressUntil = useRef(0)
-    // lastState: avoid firing duplicate events for the same state
     const lastState = useRef<number | null>(null)
-    // lastSeekTime: track last seek time to avoid redundant seek events
     const lastSeekTime = useRef<number>(-1)
     const [error, setError] = useState(false)
 
@@ -63,16 +60,12 @@ export const Player = forwardRef<PlayerHandle, Props>(({ url, onPlay, onPause, o
     }
 
     function onStateChange(e: YouTubeEvent) {
-        // Ignore events triggered by remote-driven calls
         if (Date.now() < suppressUntil.current) return
-        // Ignore duplicate state
         if (e.data === lastState.current) return
         lastState.current = e.data
 
         if (e.data === 1) {
-            // Playing — emit seek + play
             const t = e.target.getCurrentTime?.() ?? 0
-            // Only emit seek if time changed meaningfully from last known seek
             if (Math.abs(t - lastSeekTime.current) > 1.5) {
                 lastSeekTime.current = t
                 onSeek(t)
@@ -81,7 +74,6 @@ export const Player = forwardRef<PlayerHandle, Props>(({ url, onPlay, onPause, o
         }
 
         if (e.data === 2) {
-            // Paused
             onPause()
         }
     }
