@@ -497,10 +497,7 @@ export const Room = ({ peer, name, leave }: Props) => {
 
             <header className="flex items-center gap-2 px-3 pt-3 pb-0 shrink-0 h-14">
                 <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                    <div className="grid h-8 w-8 place-items-center rounded-xl bg-ember-400/15 text-ember-400 shrink-0">
-                        <i className="fa-solid fa-fire text-sm" />
-                    </div>
-                    <span className="text-sm font-bold text-ember-50">bonfire</span>
+                    <span className="text-sm font-bold text-ember-50 ml-2">bonfire</span>
                     <span className="text-xs font-semibold text-ember-100/30 truncate">· {label}</span>
                 </div>
 
@@ -698,8 +695,11 @@ export const Room = ({ peer, name, leave }: Props) => {
                         ) : (
                             <div className="grid h-full place-items-center px-6 text-center">
                                 <div className="max-w-sm space-y-5">
-                                    <div className="mx-auto grid h-20 w-20 place-items-center rounded-[1.5rem] bg-ember-400/15 text-3xl text-ember-400">
-                                        <i className="fa-solid fa-fire" />
+                                    <div className="mx-auto grid h-20 w-15 place-items-center rounded-[1.5rem] text-3xl text-ember-400">
+                                        <img
+                                            src="assets/logo.svg"
+                                            alt="Bonfire logo"
+                                        />
                                     </div>
                                     <div>
                                         <h2 className="text-2xl font-bold text-ember-50">ready when you are</h2>
