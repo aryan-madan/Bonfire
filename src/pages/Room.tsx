@@ -163,6 +163,7 @@ export const Room = ({ peer, name, leave }: Props) => {
     const [speakers, setSpeakers] = useState<MediaDeviceInfo[]>([])
     const [micDevice, setMicDevice] = useState('')
     const [speakerDevice, setSpeakerDevice] = useState('')
+    const [callDuration, setCallDuration] = useState(0)
     const bottom = useRef<HTMLDivElement>(null)
     const player = useRef<PlayerHandle>(null)
     const localVid = useRef<HTMLVideoElement>(null)
@@ -173,6 +174,8 @@ export const Room = ({ peer, name, leave }: Props) => {
     const timer = useRef<number | null>(null)
     const hoverTimer = useRef<number | null>(null)
     const remoteAudioEl = useRef<HTMLAudioElement | null>(null)
+    const callStart = useRef<number | null>(null)
+    const durationTimer = useRef<number | null>(null)
 
     const bc = useCallback((kind: Parameters<typeof pack>[0], payload: unknown) => {
         send(peer, pack(kind, payload))
@@ -266,6 +269,12 @@ export const Room = ({ peer, name, leave }: Props) => {
                 if (timer.current) window.clearTimeout(timer.current)
                 timer.current = null
                 setLeft(false)
+                if (!callStart.current) {
+                    callStart.current = Date.now()
+                    durationTimer.current = window.setInterval(() => {
+                        setCallDuration(Math.floor((Date.now() - callStart.current!) / 1000))
+                    }, 1000)
+                }
                 return
             }
             if (state === 'failed' || state === 'closed') { setLeft(true); return }
@@ -335,10 +344,18 @@ export const Room = ({ peer, name, leave }: Props) => {
         return () => {
             if (timer.current) window.clearTimeout(timer.current)
             if (hoverTimer.current) window.clearTimeout(hoverTimer.current)
+            if (durationTimer.current) window.clearInterval(durationTimer.current)
             localRef.current?.getTracks().forEach(t => t.stop())
             if (remoteAudio) { remoteAudio.srcObject = null }
         }
     }, [])
+
+    const fmtDuration = (s: number) => {
+        const h = Math.floor(s / 3600)
+        const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0')
+        const sec = (s % 60).toString().padStart(2, '0')
+        return h > 0 ? `${h}:${m}:${sec}` : `${m}:${sec}`
+    }
 
     const startMedia = async (withVideo: boolean) => {
         setBusy(true)
@@ -499,6 +516,11 @@ export const Room = ({ peer, name, leave }: Props) => {
                 <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     <span className="text-sm font-bold text-ember-50 ml-2">bonfire</span>
                     <span className="text-xs font-semibold text-ember-100/30 truncate">· {label}</span>
+                    {callDuration > 0 && (
+                        <span className="ml-1 text-xs font-bold tabular-nums text-mint-300/70">
+                            · {fmtDuration(callDuration)}
+                        </span>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
