@@ -22,3 +22,5 @@ No data is stored anywhere except for your nickname, which you enter at the star
 
 ## Experience
 Experience Bonfire [here.](https://usebonfire.vercel.app/)
+
+Made with ❤️ by Ary
