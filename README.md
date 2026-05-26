@@ -23,4 +23,9 @@ No data is stored anywhere except for your nickname, which you enter at the star
 ## Experience
 Experience Bonfire [here.](https://usebonfire.vercel.app/)
 
+## AI Usage
+- debugging
+- css
+- prototyping video calls
+
 Made with ❤️ by Ary
