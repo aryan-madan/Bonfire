@@ -28,4 +28,5 @@ Experience Bonfire [here.](https://usebonfire.vercel.app/)
 - css
 - prototyping video calls
 
-Made with ❤️ by Ary
+Made with ❤️ by Ary<br>
+Love to the point of creation
