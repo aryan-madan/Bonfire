@@ -62,7 +62,7 @@ export function Home() {
             setJoinError('')
             setStatus('connecting')
             setMode('joining')
-            setActivePeer(await join(room, () => setStatus('connected'), () => { }))
+            setActivePeer(await join(room, () => setStatus('connected'), () => {}))
         } catch {
             setJoinError('room not found — check the code and try again')
             setStatus('idle')
@@ -86,7 +86,6 @@ export function Home() {
     return (
         <main className="grid min-h-screen place-items-center bg-cocoa-900 px-4 py-8 text-ember-50">
             <section className="w-full max-w-[400px]">
-
                 <header className="mb-8 text-center">
                     <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-[1.25rem]">
                         <img
@@ -118,7 +117,7 @@ export function Home() {
                                         icon="fa-solid fa-arrow-right-to-bracket"
                                         label="Join room"
                                         sublabel="Enter a code"
-                                        onClick={() => { }}
+                                        onClick={() => {}}
                                         accent="mint"
                                         disabled
                                         visualOnly
@@ -148,10 +147,14 @@ export function Home() {
                             <JoiningState status={status} onCancel={cleanup} />
                         )}
                     </div>
-
-
                 </div>
             </section>
+
+            <footer className="fixed bottom-4 left-0 right-0 flex justify-center">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-ember-100/25">
+                    v1.18
+                </span>
+            </footer>
         </main>
     )
 }
@@ -305,12 +308,12 @@ function CreateRoom({ setPeer, setStatus, onopen, back }: {
         if (started.current) return
         started.current = true
         setStatus('generating')
-        host(onopen, () => { }).then(({ peer: p, link, room }) => {
+        host(onopen, () => {}).then(({ peer: p, link, room }) => {
             setPeer(p)
             setInvite(link)
             setRoomCode(room)
             setStatus('waiting')
-            poll(room, p).then(() => setStatus('connected')).catch(() => { })
+            poll(room, p).then(() => setStatus('connected')).catch(() => {})
         })
     }, [onopen, setPeer, setStatus])
 

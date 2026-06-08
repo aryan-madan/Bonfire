@@ -14,7 +14,8 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-youtube": "^10.1.0",
-    "tailwindcss": "^4.3.0"
+    "tailwindcss": "^4.3.0",
+    "vercel": "^54.9.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
