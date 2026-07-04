@@ -702,6 +702,19 @@ export const Room = ({ peer, name, leave }: Props) => {
         bc('media-state', { micOn: mic, camOn: next })
     }
 
+    useEffect(() => {
+        const handleKey = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null
+            const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+            if (typing || e.ctrlKey || e.metaKey || e.altKey) return
+            const key = e.key.toLowerCase()
+            if (key === 'm') { e.preventDefault(); toggleMic() }
+            if (key === 'v') { e.preventDefault(); toggleCam() }
+        }
+        window.addEventListener('keydown', handleKey)
+        return () => window.removeEventListener('keydown', handleKey)
+    })
+
     const sendMsg = () => {
         if (!draft.trim()) return
         const m: Message = { id: crypto.randomUUID(), sender: name, text: draft.trim(), stamp: Date.now() }
@@ -797,12 +810,14 @@ export const Room = ({ peer, name, leave }: Props) => {
                     <div className="grid grid-cols-2 gap-2 w-full">
                         <button
                             onClick={toggleMic}
+                            title="Toggle mic (M)"
                             className={`w-full rounded-full py-2 text-xs font-bold transition-colors ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
                         >
                             <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
                         </button>
                         <button
                             onClick={toggleCam}
+                            title="Toggle camera (V)"
                             className={`w-full rounded-full py-2 text-xs font-bold transition-colors ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
                         >
                             <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
@@ -994,12 +1009,14 @@ export const Room = ({ peer, name, leave }: Props) => {
                                 <div className="flex items-center gap-2 rounded-full bg-cocoa-900/80 backdrop-blur px-4 py-2.5">
                                     <button
                                         onClick={toggleMic}
+                                        title="Toggle mic (M)"
                                         className={`flex items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
                                     >
                                         <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
                                     </button>
                                     <button
                                         onClick={toggleCam}
+                                        title="Toggle camera (V)"
                                         className={`flex items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
                                     >
                                         <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
