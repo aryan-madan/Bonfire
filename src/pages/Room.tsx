@@ -317,6 +317,59 @@ const QueueBar = ({ show, setShow, ytError, input, setInput, setYtError, add, cu
     )
 }
 
+const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remoteMic, name, other, localVidRef, remoteVidRef }: {
+    isLocal: boolean
+    expanded: boolean
+    local: MediaStream | null
+    remote: MediaStream | null
+    cam: boolean
+    mic: boolean
+    remoteCam: boolean
+    remoteMic: boolean
+    name: string
+    other: string
+    localVidRef: (el: HTMLVideoElement | null) => void
+    remoteVidRef: (el: HTMLVideoElement | null) => void
+}) => {
+    const hasStream = isLocal ? !!local : !!remote
+    const hasVideo = isLocal ? (!!local && cam) : (!!remote && remoteCam)
+    const hasMic = isLocal ? mic : remoteMic
+    const displayName = isLocal ? name : (other || 'connecting...')
+    const avatarBg = isLocal ? 'bg-ember-400' : 'bg-mint-300'
+    const avatarGlow = isLocal ? 'rgba(251,146,60,0.15)' : 'rgba(110,231,183,0.15)'
+    const avatarSize = expanded ? 'h-20 w-20 text-xl' : 'h-14 w-14 text-base'
+
+    return (
+        <div className={`relative overflow-hidden bg-cocoa-800 min-h-0 flex-1 ${expanded ? 'rounded-[1.75rem]' : 'rounded-[1.15rem]'}`}>
+            <video
+                ref={isLocal ? localVidRef : remoteVidRef}
+                autoPlay
+                playsInline
+                muted={isLocal}
+                style={isLocal ? { transform: 'scaleX(-1)' } : undefined}
+                className={`h-full w-full object-cover transition-opacity duration-300 ${hasVideo ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
+            />
+            {!hasVideo && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                    <div
+                        className={`${avatarSize} rounded-full grid place-items-center font-bold text-white ${avatarBg}`}
+                        style={expanded ? { boxShadow: `0 0 60px ${avatarGlow}` } : undefined}
+                    >
+                        {(!isLocal && !other) ? <i className="fa-solid fa-user" /> : av(displayName)}
+                    </div>
+                    {expanded && <span className="text-sm font-bold text-ember-100/40">{displayName}</span>}
+                </div>
+            )}
+            <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5 rounded-full bg-cocoa-900/70 backdrop-blur-sm px-2.5 py-1.5 w-fit max-w-[calc(100%-1rem)]">
+                {hasStream && (
+                    <i className={`fa-solid text-[0.55rem] shrink-0 ${hasMic ? 'fa-microphone text-ember-100/50' : 'fa-microphone-slash text-berry-300/80'}`} />
+                )}
+                <span className="text-[0.6rem] font-bold text-ember-100/70 truncate">{displayName}</span>
+            </div>
+        </div>
+    )
+}
+
 export const Room = ({ peer, name, leave }: Props) => {
     const [messages, setMessages] = useState<Message[]>([])
     const [queue, setQueue] = useState<Item[]>([])
@@ -718,46 +771,6 @@ export const Room = ({ peer, name, leave }: Props) => {
     const groups = toGroups(messages, name)
     const label = left ? `${other || 'they'} left` : other ? `${name} + ${other}` : 'waiting...'
 
-    const VideoTile = ({ isLocal, expanded }: { isLocal: boolean; expanded: boolean }) => {
-        const hasStream = isLocal ? !!local : !!remote
-        const hasVideo = isLocal ? (!!local && cam) : (!!remote && remoteCam)
-        const hasMic = isLocal ? mic : remoteMic
-        const displayName = isLocal ? name : (other || 'connecting...')
-        const avatarBg = isLocal ? 'bg-ember-400' : 'bg-mint-300'
-        const avatarGlow = isLocal ? 'rgba(251,146,60,0.15)' : 'rgba(110,231,183,0.15)'
-        const avatarSize = expanded ? 'h-20 w-20 text-xl' : 'h-14 w-14 text-base'
-
-        return (
-            <div className={`relative overflow-hidden bg-cocoa-800 min-h-0 flex-1 ${expanded ? 'rounded-[1.75rem]' : 'rounded-[1.15rem]'}`}>
-                <video
-                    ref={isLocal ? localVidRef : remoteVidRef}
-                    autoPlay
-                    playsInline
-                    muted={isLocal}
-                    style={isLocal ? { transform: 'scaleX(-1)' } : undefined}
-                    className={`h-full w-full object-cover transition-opacity duration-300 ${hasVideo ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
-                />
-                {!hasVideo && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                        <div
-                            className={`${avatarSize} rounded-full grid place-items-center font-bold text-white ${avatarBg}`}
-                            style={expanded ? { boxShadow: `0 0 60px ${avatarGlow}` } : undefined}
-                        >
-                            {(!isLocal && !other) ? <i className="fa-solid fa-user" /> : av(displayName)}
-                        </div>
-                        {expanded && <span className="text-sm font-bold text-ember-100/40">{displayName}</span>}
-                    </div>
-                )}
-                <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5 rounded-full bg-cocoa-900/70 backdrop-blur-sm px-2.5 py-1.5 w-fit max-w-[calc(100%-1rem)]">
-                    {hasStream && (
-                        <i className={`fa-solid text-[0.55rem] shrink-0 ${hasMic ? 'fa-microphone text-ember-100/50' : 'fa-microphone-slash text-berry-300/80'}`} />
-                    )}
-                    <span className="text-[0.6rem] font-bold text-ember-100/70 truncate">{displayName}</span>
-                </div>
-            </div>
-        )
-    }
-
     const callControls = (
         <>
             {!local ? (
@@ -881,8 +894,34 @@ export const Room = ({ peer, name, leave }: Props) => {
                             <span className="text-xs font-bold text-ember-50">call</span>
                         </div>
                         <div className="w-full px-4 pb-4 flex flex-col gap-2 box-border flex-1 min-h-0">
-                            <VideoTile isLocal={false} expanded={false} />
-                            <VideoTile isLocal={true} expanded={false} />
+                            <VideoTile
+                                isLocal={false}
+                                expanded={false}
+                                local={local}
+                                remote={remote}
+                                cam={cam}
+                                mic={mic}
+                                remoteCam={remoteCam}
+                                remoteMic={remoteMic}
+                                name={name}
+                                other={other}
+                                localVidRef={localVidRef}
+                                remoteVidRef={remoteVidRef}
+                            />
+                            <VideoTile
+                                isLocal={true}
+                                expanded={false}
+                                local={local}
+                                remote={remote}
+                                cam={cam}
+                                mic={mic}
+                                remoteCam={remoteCam}
+                                remoteMic={remoteMic}
+                                name={name}
+                                other={other}
+                                localVidRef={localVidRef}
+                                remoteVidRef={remoteVidRef}
+                            />
                             {callControls}
                         </div>
                     </div>
@@ -902,8 +941,34 @@ export const Room = ({ peer, name, leave }: Props) => {
                         className="relative flex flex-1 gap-3 min-h-0 rounded-[1.75rem] overflow-hidden"
                         style={{ animation: 'callExpand 380ms cubic-bezier(0.4,0,0.2,1) both' }}
                     >
-                        <VideoTile isLocal={false} expanded={true} />
-                        <VideoTile isLocal={true} expanded={true} />
+                        <VideoTile
+                            isLocal={false}
+                            expanded={true}
+                            local={local}
+                            remote={remote}
+                            cam={cam}
+                            mic={mic}
+                            remoteCam={remoteCam}
+                            remoteMic={remoteMic}
+                            name={name}
+                            other={other}
+                            localVidRef={localVidRef}
+                            remoteVidRef={remoteVidRef}
+                        />
+                        <VideoTile
+                            isLocal={true}
+                            expanded={true}
+                            local={local}
+                            remote={remote}
+                            cam={cam}
+                            mic={mic}
+                            remoteCam={remoteCam}
+                            remoteMic={remoteMic}
+                            name={name}
+                            other={other}
+                            localVidRef={localVidRef}
+                            remoteVidRef={remoteVidRef}
+                        />
 
                         <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
                             {!local ? (
