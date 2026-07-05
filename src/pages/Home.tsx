@@ -22,6 +22,10 @@ function roomFromHash(): string {
     return new URLSearchParams(window.location.hash.slice(1)).get('room') ?? ''
 }
 
+function linkFor(room: string): string {
+    return `${window.location.origin}${window.location.pathname}#room=${room}`
+}
+
 export function Home() {
     const pendingRoom = useRef(roomFromHash())
     const [mode, setMode] = useState<Mode>('idle')
@@ -30,6 +34,7 @@ export function Home() {
     const [joinError, setJoinError] = useState('')
     const [status, setStatus] = useState<Status>('idle')
     const [activePeer, setActivePeer] = useState<Peer | null>(null)
+    const [link, setLink] = useState('')
 
     const named = name.trim().length > 0
     const joinValid = !!extractRoom(joinInput)
@@ -45,6 +50,7 @@ export function Home() {
         setMode('idle')
         setStatus('idle')
         setJoinError('')
+        setLink('')
         window.history.replaceState(null, '', window.location.pathname)
     }
 
@@ -63,8 +69,11 @@ export function Home() {
             setStatus('connecting')
             setMode('joining')
             setActivePeer(await join(room, () => setStatus('connected'), () => {}))
-        } catch {
-            setJoinError('room not found — check the code and try again')
+            setLink(linkFor(room))
+        } catch (e) {
+            console.error('bonfire: join failed', e)
+            const msg = e instanceof Error ? e.message : 'unknown error'
+            setJoinError(`couldn't join — ${msg}`)
             setStatus('idle')
             setMode('idle')
         }
@@ -80,7 +89,7 @@ export function Home() {
     }, [name, startJoin])
 
     if (status === 'connected' && activePeer) {
-        return <Room peer={activePeer} name={name.trim()} leave={cleanup} />
+        return <Room peer={activePeer} name={name.trim()} leave={cleanup} link={link} />
     }
 
     return (
@@ -139,6 +148,7 @@ export function Home() {
                                 setPeer={setActivePeer}
                                 setStatus={setStatus}
                                 onopen={() => setStatus('connected')}
+                                onLink={setLink}
                                 back={cleanup}
                             />
                         )}
@@ -152,7 +162,7 @@ export function Home() {
 
             <footer className="fixed bottom-4 left-0 right-0 flex justify-center">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-ember-100/25">
-                    v1.18
+                    v1.20
                 </span>
             </footer>
         </main>
@@ -293,10 +303,11 @@ function JoiningState({ status, onCancel }: { status: Status; onCancel: () => vo
     )
 }
 
-function CreateRoom({ setPeer, setStatus, onopen, back }: {
+function CreateRoom({ setPeer, setStatus, onopen, onLink, back }: {
     setPeer: (peer: Peer) => void
     setStatus: (s: Status) => void
     onopen: () => void
+    onLink: (link: string) => void
     back: () => void
 }) {
     const [invite, setInvite] = useState('')
@@ -312,10 +323,13 @@ function CreateRoom({ setPeer, setStatus, onopen, back }: {
             setPeer(p)
             setInvite(link)
             setRoomCode(room)
+            onLink(link)
             setStatus('waiting')
-            poll(room, p).then(() => setStatus('connected')).catch(() => {})
+            poll(room, p).then(() => setStatus('connected')).catch(e => {
+                console.error('bonfire: poll failed', e)
+            })
         })
-    }, [onopen, setPeer, setStatus])
+    }, [onopen, onLink, setPeer, setStatus])
 
     function copy(text: string, kind: 'link' | 'code') {
         void navigator.clipboard.writeText(text)

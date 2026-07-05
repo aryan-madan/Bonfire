@@ -126,9 +126,18 @@ export async function join(
         }
     })
 
-    const res = await fetch(`${SIGNAL}/${room}-offer`)
-    if (!res.ok) throw new Error('room not found')
-    const raw = await res.text()
+    let raw = ''
+    let lastStatus = 0
+    for (let attempt = 0; attempt < 6; attempt++) {
+        const res = await fetch(`${SIGNAL}/${room}-offer`)
+        lastStatus = res.status
+        if (res.ok) {
+            raw = await res.text()
+            break
+        }
+        if (attempt < 5) await new Promise(r => setTimeout(r, 1000))
+    }
+    if (!raw) throw new Error(`room not found (status ${lastStatus})`)
 
     await conn.setRemoteDescription(decode(raw))
     await conn.setLocalDescription(await conn.createAnswer())

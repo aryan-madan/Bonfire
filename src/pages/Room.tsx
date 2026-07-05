@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { pack, unpack } from '../lib/messages'
 import { type Peer, send } from '../lib/rtc'
 import { Player, type PlayerHandle } from '../components/Player'
@@ -29,6 +30,13 @@ interface Props {
     peer: Peer
     name: string
     leave: () => void
+    link: string
+}
+
+interface Toast {
+    id: string
+    text: string
+    kind: 'info' | 'success' | 'error'
 }
 
 type SinkAudio = HTMLAudioElement & {
@@ -317,6 +325,40 @@ const QueueBar = ({ show, setShow, ytError, input, setInput, setYtError, add, cu
     )
 }
 
+const toastIcon = (kind: Toast['kind']) => {
+    if (kind === 'success') return 'fa-solid fa-circle-check'
+    if (kind === 'error') return 'fa-solid fa-triangle-exclamation'
+    return 'fa-solid fa-circle-info'
+}
+
+const toastColor = (kind: Toast['kind']) => {
+    if (kind === 'success') return 'text-mint-300'
+    if (kind === 'error') return 'text-berry-300'
+    return 'text-ember-400'
+}
+
+const ToastStack = ({ toasts }: { toasts: Toast[] }) => createPortal(
+    <div className="pointer-events-none fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center gap-2">
+        <style>{`
+            @keyframes toastIn {
+                from { opacity: 0; transform: translateY(-10px) scale(0.96); }
+                to   { opacity: 1; transform: translateY(0) scale(1); }
+            }
+        `}</style>
+        {toasts.map(t => (
+            <div
+                key={t.id}
+                className="flex items-center gap-2 whitespace-nowrap rounded-full bg-cocoa-800/95 backdrop-blur border border-white/[0.06] px-4 py-2.5 shadow-lg"
+                style={{ animation: 'toastIn 260ms cubic-bezier(0.4,0,0.2,1) both' }}
+            >
+                <i className={`${toastIcon(t.kind)} text-xs ${toastColor(t.kind)}`} />
+                <span className="text-xs font-bold text-ember-50">{t.text}</span>
+            </div>
+        ))}
+    </div>,
+    document.body
+)
+
 const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remoteMic, name, other, localVidRef, remoteVidRef }: {
     isLocal: boolean
     expanded: boolean
@@ -360,7 +402,7 @@ const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remo
                     {expanded && <span className="text-sm font-bold text-ember-100/40">{displayName}</span>}
                 </div>
             )}
-            <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5 rounded-full bg-cocoa-900/70 backdrop-blur-sm px-2.5 py-1.5 w-fit max-w-[calc(100%-1rem)]">
+            <div className="absolute top-2 left-2 right-2 flex items-center gap-1.5 rounded-full bg-cocoa-900/70 backdrop-blur-sm px-2.5 py-1.5 w-fit max-w-[calc(100%-1rem)]">
                 {hasStream && (
                     <i className={`fa-solid text-[0.55rem] shrink-0 ${hasMic ? 'fa-microphone text-ember-100/50' : 'fa-microphone-slash text-berry-300/80'}`} />
                 )}
@@ -370,7 +412,7 @@ const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remo
     )
 }
 
-export const Room = ({ peer, name, leave }: Props) => {
+export const Room = ({ peer, name, leave, link }: Props) => {
     const [messages, setMessages] = useState<Message[]>([])
     const [queue, setQueue] = useState<Item[]>([])
     const [current, setCurrent] = useState<Item | null>(null)
@@ -387,7 +429,8 @@ export const Room = ({ peer, name, leave }: Props) => {
     const [remoteCam, setRemoteCam] = useState(false)
     const [remoteMic, setRemoteMic] = useState(false)
     const [busy, setBusy] = useState(false)
-    const [error, setError] = useState('')
+    const [toasts, setToasts] = useState<Toast[]>([])
+    const [linkCopied, setLinkCopied] = useState(false)
     const [videoHovered, setVideoHovered] = useState(false)
     const [watchOpen, setWatchOpen] = useState(true)
     const [callOpen, setCallOpen] = useState(true)
@@ -428,6 +471,21 @@ export const Room = ({ peer, name, leave }: Props) => {
     const remoteAudioEl = useRef<HTMLAudioElement | null>(null)
     const callStart = useRef<number | null>(null)
     const durationTimer = useRef<number | null>(null)
+    const otherRef = useRef('')
+    const reconnectingRef = useRef(false)
+
+    const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
+        setToasts(prev => {
+            if (prev.some(t => t.text === text)) return prev
+            const item: Toast = { id: crypto.randomUUID(), text, kind }
+            setTimeout(() => setToasts(p => p.filter(t => t.id !== item.id)), 3500)
+            return [...prev, item]
+        })
+    }, [])
+
+    useEffect(() => {
+        otherRef.current = other
+    }, [other])
 
     const bc = useCallback((kind: Parameters<typeof pack>[0], payload: unknown) => {
         send(peer, pack(kind, payload))
@@ -487,10 +545,14 @@ export const Room = ({ peer, name, leave }: Props) => {
             setRemoteMic(!!state.micOn)
         }
         if (msg.kind === 'name') {
-            setOther((msg.payload as { name: string }).name)
+            const incoming = (msg.payload as { name: string }).name
+            setOther(prev => {
+                if (!prev) toast(`${incoming} joined`, 'success')
+                return incoming
+            })
             setLeft(false)
         }
-    }, [answer, peer])
+    }, [answer, peer, toast])
 
     useEffect(() => {
         const conn = peer.conn
@@ -513,7 +575,10 @@ export const Room = ({ peer, name, leave }: Props) => {
             const videoOnly = new MediaStream(stream.getVideoTracks())
             remoteVidEls.current.forEach(el => { el.srcObject = videoOnly })
         }
-        const handleClose = () => { setLeft(true) }
+        const handleClose = () => {
+            setLeft(true)
+            toast(`${otherRef.current || 'they'} disconnected`, 'error')
+        }
         const handleNegotiationNeeded = () => { void negotiate() }
         const handleConnectionStateChange = () => {
             const state = conn.connectionState
@@ -521,6 +586,10 @@ export const Room = ({ peer, name, leave }: Props) => {
                 void tuneAudio(conn)
                 if (timer.current) window.clearTimeout(timer.current)
                 timer.current = null
+                if (reconnectingRef.current) {
+                    reconnectingRef.current = false
+                    toast('Reconnected', 'success')
+                }
                 setLeft(false)
                 if (!callStart.current) {
                     callStart.current = Date.now()
@@ -532,8 +601,12 @@ export const Room = ({ peer, name, leave }: Props) => {
             }
             if (state === 'failed' || state === 'closed') { setLeft(true); return }
             if (state === 'disconnected' && !timer.current) {
+                reconnectingRef.current = true
                 timer.current = window.setTimeout(() => {
-                    if (conn.connectionState === 'disconnected') setLeft(true)
+                    if (conn.connectionState === 'disconnected') {
+                        setLeft(true)
+                        toast(`${otherRef.current || 'they'} disconnected`, 'error')
+                    }
                     timer.current = null
                 }, 30000)
             }
@@ -552,7 +625,7 @@ export const Room = ({ peer, name, leave }: Props) => {
             conn.removeEventListener('connectionstatechange', handleConnectionStateChange)
             navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices)
         }
-    }, [negotiate, peer, receive, refreshDevices])
+    }, [negotiate, peer, receive, refreshDevices, toast])
 
     useEffect(() => {
         const t = setTimeout(() => send(peer, pack('name', { name })), 600)
@@ -612,7 +685,6 @@ export const Room = ({ peer, name, leave }: Props) => {
 
     const startMedia = async (withVideo: boolean) => {
         setBusy(true)
-        setError('')
         try {
             let stream = localRef.current
             if (!stream) {
@@ -641,7 +713,7 @@ export const Room = ({ peer, name, leave }: Props) => {
             setCam(nextCam)
             bc('media-state', { micOn: nextMic, camOn: nextCam })
         } catch {
-            setError('camera or microphone permission was blocked')
+            toast('camera or microphone permission was blocked', 'error')
         } finally {
             setBusy(false)
         }
@@ -652,7 +724,6 @@ export const Room = ({ peer, name, leave }: Props) => {
         const stream = localRef.current
         if (!stream?.getAudioTracks().length) return
         setBusy(true)
-        setError('')
         try {
             const next = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(deviceId), video: false })
             const track = next.getAudioTracks()[0]
@@ -678,7 +749,7 @@ export const Room = ({ peer, name, leave }: Props) => {
             localRef.current = stream
             void refreshDevices()
         } catch {
-            setError('microphone switch failed')
+            toast('microphone switch failed', 'error')
         } finally {
             setBusy(false)
         }
@@ -781,6 +852,14 @@ export const Room = ({ peer, name, leave }: Props) => {
         setWatchOpen(v => !v)
     }
 
+    const copyLink = () => {
+        void navigator.clipboard.writeText(link).then(() => {
+            setLinkCopied(true)
+            toast('Link copied', 'success')
+            setTimeout(() => setLinkCopied(false), 1800)
+        })
+    }
+
     const groups = toGroups(messages, name)
     const label = left ? `${other || 'they'} left` : other ? `${name} + ${other}` : 'waiting...'
 
@@ -856,6 +935,8 @@ export const Room = ({ peer, name, leave }: Props) => {
         <div className="flex flex-col h-screen overflow-hidden bg-cocoa-900 text-ember-50">
             <audio ref={remoteAudioEl} autoPlay className="hidden" />
 
+            <ToastStack toasts={toasts} />
+
             <header className="flex items-center gap-2 px-3 pt-3 pb-0 shrink-0 h-14">
                 <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     <span className="text-sm font-bold text-ember-50 ml-2">bonfire</span>
@@ -867,6 +948,16 @@ export const Room = ({ peer, name, leave }: Props) => {
                     )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
+                    {link && (
+                        <button
+                            onClick={copyLink}
+                            title="Copy room link"
+                            className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${linkCopied ? 'bg-mint-300/20 text-mint-300' : 'bg-cocoa-800 text-ember-100/45 hover:text-ember-100/80 hover:bg-cocoa-700'}`}
+                        >
+                            <i className={`fa-solid ${linkCopied ? 'fa-check' : 'fa-link'} text-[0.6rem]`} />
+                            <span>{linkCopied ? 'copied' : 'copy link'}</span>
+                        </button>
+                    )}
                     <NavBtn
                         active={callOpen}
                         onClick={toggleCall}
@@ -1054,12 +1145,6 @@ export const Room = ({ peer, name, leave }: Props) => {
 
                 {watchOpen && (
                     <main className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
-                        {error && (
-                            <div className="shrink-0 rounded-2xl bg-berry-300/15 px-4 py-3 text-sm font-bold text-berry-300">
-                                <i className="fa-solid fa-triangle-exclamation mr-2" />
-                                {error}
-                            </div>
-                        )}
                         <section
                             className="relative flex-1 rounded-[1.75rem] overflow-hidden bg-cocoa-800 min-h-0"
                             onMouseEnter={handleVideoMouseEnter}
