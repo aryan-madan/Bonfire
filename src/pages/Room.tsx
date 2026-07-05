@@ -39,6 +39,14 @@ interface Toast {
     kind: 'info' | 'success' | 'error'
 }
 
+type ContextTarget = 'local' | 'remote'
+
+interface ContextMenuState {
+    x: number
+    y: number
+    target: ContextTarget
+}
+
 type SinkAudio = HTMLAudioElement & {
     setSinkId?: (id: string) => Promise<void>
 }
@@ -197,33 +205,99 @@ const NavBtn = ({ active, onClick, icon, label, dot, badge, disabled }: {
     </button>
 )
 
-const DeviceSelect = ({ icon, value, options, fallback, onChange, disabled }: {
+const DeviceDropdown = ({ icon, value, options, fallback, onChange, disabled }: {
     icon: string
     value: string
     options: MediaDeviceInfo[]
     fallback: string
     onChange: (value: string) => void | Promise<void>
     disabled?: boolean
-}) => (
-    <label className="flex items-center gap-2 rounded-xl bg-cocoa-800 px-2.5 py-1.5 text-ember-100/55 ring-1 ring-ember-100/5 focus-within:ring-ember-400/40">
-        <i className={`${icon} w-3 text-center text-[0.6rem] text-ember-100/35`} />
-        <select
-            className="min-w-0 flex-1 bg-transparent text-xs font-bold text-ember-100/70 outline-none disabled:opacity-50"
-            value={value}
-            onChange={e => { void onChange(e.target.value) }}
-            disabled={disabled}
-        >
-            <option value="">{fallback}</option>
-            {options.map(device => (
-                <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || fallback}
-                </option>
-            ))}
-        </select>
-    </label>
-)
+}) => {
+    const [open, setOpen] = useState(false)
+    const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+    const btnRef = useRef<HTMLButtonElement>(null)
+    const menuRef = useRef<HTMLDivElement>(null)
 
-const QueueBar = ({ show, setShow, ytError, input, setInput, setYtError, add, current, queue, onReorder, inline = false }: {
+    const selected = options.find(d => d.deviceId === value)
+    const label = selected ? (selected.label || fallback) : fallback
+
+    const openMenu = () => {
+        if (disabled) return
+        const rect = btnRef.current?.getBoundingClientRect()
+        if (rect) setPos({ top: rect.bottom + 6, left: rect.left, width: rect.width })
+        setOpen(true)
+    }
+
+    useEffect(() => {
+        if (!open) return
+        const onDown = (e: MouseEvent) => {
+            if (menuRef.current?.contains(e.target as Node)) return
+            if (btnRef.current?.contains(e.target as Node)) return
+            setOpen(false)
+        }
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+        const onReposition = () => setOpen(false)
+        window.addEventListener('mousedown', onDown, true)
+        window.addEventListener('keydown', onKey)
+        window.addEventListener('resize', onReposition)
+        window.addEventListener('scroll', onReposition, true)
+        return () => {
+            window.removeEventListener('mousedown', onDown, true)
+            window.removeEventListener('keydown', onKey)
+            window.removeEventListener('resize', onReposition)
+            window.removeEventListener('scroll', onReposition, true)
+        }
+    }, [open])
+
+    const select = (id: string) => {
+        setOpen(false)
+        void onChange(id)
+    }
+
+    return (
+        <>
+            <button
+                ref={btnRef}
+                type="button"
+                onClick={() => (open ? setOpen(false) : openMenu())}
+                disabled={disabled}
+                className={`flex w-full items-center gap-2 rounded-xl bg-cocoa-800 px-2.5 py-1.5 text-left transition-colors disabled:opacity-50 ${open ? 'ring-1 ring-ember-400/40' : 'ring-1 ring-ember-100/5 hover:bg-cocoa-700'}`}
+            >
+                <i className={`${icon} w-3 text-center text-[0.6rem] text-ember-100/35`} />
+                <span className="min-w-0 flex-1 truncate text-xs font-bold text-ember-100/70">{label}</span>
+                <i className={`fa-solid fa-chevron-down text-[0.55rem] text-ember-100/30 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+            {open && createPortal(
+                <div
+                    ref={menuRef}
+                    style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
+                    className="z-[9999] max-h-56 overflow-y-auto rounded-2xl bg-plum-900 p-1.5 shadow-2xl ring-1 ring-white/[0.08] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
+                    <button
+                        onClick={() => select('')}
+                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-colors ${!value ? 'bg-cocoa-800 text-ember-50' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                    >
+                        <span className="truncate">{fallback}</span>
+                        {!value && <i className="fa-solid fa-check text-[0.6rem] shrink-0" />}
+                    </button>
+                    {options.map(device => (
+                        <button
+                            key={device.deviceId}
+                            onClick={() => select(device.deviceId)}
+                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-colors ${value === device.deviceId ? 'bg-cocoa-800 text-ember-50' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                        >
+                            <span className="truncate">{device.label || fallback}</span>
+                            {value === device.deviceId && <i className="fa-solid fa-check text-[0.6rem] shrink-0" />}
+                        </button>
+                    ))}
+                </div>,
+                document.body
+            )}
+        </>
+    )
+}
+
+const QueueBar = ({ show, setShow, ytError, input, setInput, setYtError, add, current, queue, onReorder, onScreenShare, screenBusy, inline = false }: {
     show: boolean
     setShow: (v: boolean | ((v: boolean) => boolean)) => void
     ytError: boolean
@@ -234,6 +308,8 @@ const QueueBar = ({ show, setShow, ytError, input, setInput, setYtError, add, cu
     current: Item | null
     queue: Item[]
     onReorder: (next: Item[]) => void
+    onScreenShare: () => void
+    screenBusy: boolean
     inline?: boolean
 }) => {
     const total = queue.length + (current ? 1 : 0)
@@ -293,33 +369,48 @@ const QueueBar = ({ show, setShow, ytError, input, setInput, setYtError, add, cu
                     ))}
                 </div>
             )}
-            <div className="flex items-center gap-2">
-                <div className={`flex items-center gap-2 flex-1 rounded-full px-4 py-2.5 transition-all ${inline ? 'bg-cocoa-800' : 'bg-cocoa-900/80 backdrop-blur'} ${ytError ? 'ring-1 ring-berry-300/60' : ''}`}>
-                    <i className={`fa-brands fa-youtube text-sm shrink-0 ${ytError ? 'text-berry-300' : 'text-ember-100/30'}`} />
-                    <input
-                        className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-ember-50 placeholder:text-ember-100/30 focus:outline-none"
-                        value={input}
-                        onChange={e => { setInput(e.target.value); setYtError(false) }}
-                        onKeyDown={e => e.key === 'Enter' && add()}
-                        placeholder={ytError ? 'youtube links only' : 'paste a youtube link...'}
-                    />
-                    <button
-                        className="shrink-0 rounded-full bg-ember-400 px-4 py-1.5 text-xs font-bold text-white hover:bg-ember-500 disabled:opacity-30 transition-colors"
-                        onClick={add}
-                        disabled={!input.trim()}
-                    >
-                        add
-                    </button>
+            <div className="flex flex-col gap-2.5">
+                <div className="flex items-center gap-2">
+                    <div className={`flex items-center gap-2 flex-1 rounded-full px-4 py-2.5 transition-all ${inline ? 'bg-cocoa-800' : 'bg-cocoa-900/80 backdrop-blur'} ${ytError ? 'ring-1 ring-berry-300/60' : ''}`}>
+                        <i className={`fa-brands fa-youtube text-sm shrink-0 ${ytError ? 'text-berry-300' : 'text-ember-100/30'}`} />
+                        <input
+                            className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-ember-50 placeholder:text-ember-100/30 focus:outline-none"
+                            value={input}
+                            onChange={e => { setInput(e.target.value); setYtError(false) }}
+                            onKeyDown={e => e.key === 'Enter' && add()}
+                            placeholder={ytError ? 'youtube links only' : 'paste a youtube link...'}
+                        />
+                        <button
+                            className="shrink-0 rounded-full bg-ember-400 px-4 py-1.5 text-xs font-bold text-white hover:bg-ember-500 disabled:opacity-30 transition-colors"
+                            onClick={add}
+                            disabled={!input.trim()}
+                        >
+                            add
+                        </button>
+                    </div>
+                    {!inline && total > 0 && (
+                        <button
+                            onClick={() => setShow(v => !v)}
+                            className={`relative flex items-center gap-1.5 rounded-full px-3.5 py-2.5 text-xs font-bold backdrop-blur transition-all shrink-0 ${show ? 'bg-ember-400/20 text-ember-400' : 'bg-cocoa-900/80 text-ember-100/60 hover:text-ember-50'}`}
+                        >
+                            <i className="fa-solid fa-list-ul" />
+                            <span>{total}</span>
+                        </button>
+                    )}
                 </div>
-                {!inline && total > 0 && (
-                    <button
-                        onClick={() => setShow(v => !v)}
-                        className={`relative flex items-center gap-1.5 rounded-full px-3.5 py-2.5 text-xs font-bold backdrop-blur transition-all shrink-0 ${show ? 'bg-ember-400/20 text-ember-400' : 'bg-cocoa-900/80 text-ember-100/60 hover:text-ember-50'}`}
-                    >
-                        <i className="fa-solid fa-list-ul" />
-                        <span>{total}</span>
-                    </button>
-                )}
+                <div className="flex items-center gap-2.5">
+                    <div className="h-px flex-1 bg-white/10" />
+                    <span className="text-[0.6rem] font-bold uppercase tracking-wider text-ember-100/30">or</span>
+                    <div className="h-px flex-1 bg-white/10" />
+                </div>
+                <button
+                    onClick={onScreenShare}
+                    disabled={screenBusy}
+                    className={`flex w-full items-center justify-center gap-1.5 rounded-full py-2.5 text-xs font-bold backdrop-blur transition-all disabled:opacity-40 ${inline ? 'bg-cocoa-800 text-ember-100/60 hover:bg-cocoa-700' : 'bg-cocoa-900/80 text-ember-100/60 hover:text-ember-50'}`}
+                >
+                    <i className="fa-solid fa-desktop" />
+                    share your screen
+                </button>
             </div>
         </div>
     )
@@ -359,7 +450,7 @@ const ToastStack = ({ toasts }: { toasts: Toast[] }) => createPortal(
     document.body
 )
 
-const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remoteMic, name, other, localVidRef, remoteVidRef }: {
+const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remoteMic, sharing, name, other, localVidRef, remoteVidRef, speaking, onContextMenu, forceHideVideo, mutedForYou }: {
     isLocal: boolean
     expanded: boolean
     local: MediaStream | null
@@ -368,13 +459,18 @@ const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remo
     mic: boolean
     remoteCam: boolean
     remoteMic: boolean
+    sharing?: boolean
     name: string
     other: string
     localVidRef: (el: HTMLVideoElement | null) => void
     remoteVidRef: (el: HTMLVideoElement | null) => void
+    speaking?: boolean
+    onContextMenu?: (e: React.MouseEvent) => void
+    forceHideVideo?: boolean
+    mutedForYou?: boolean
 }) => {
     const hasStream = isLocal ? !!local : !!remote
-    const hasVideo = isLocal ? (!!local && cam) : (!!remote && remoteCam)
+    const hasVideo = isLocal ? (!!local && cam) : (!!remote && remoteCam && !forceHideVideo)
     const hasMic = isLocal ? mic : remoteMic
     const displayName = isLocal ? name : (other || 'connecting...')
     const avatarBg = isLocal ? 'bg-ember-400' : 'bg-mint-300'
@@ -382,7 +478,10 @@ const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remo
     const avatarSize = expanded ? 'h-20 w-20 text-xl' : 'h-14 w-14 text-base'
 
     return (
-        <div className={`relative overflow-hidden bg-cocoa-800 min-h-0 flex-1 ${expanded ? 'rounded-[1.75rem]' : 'rounded-[1.15rem]'}`}>
+        <div
+            onContextMenu={onContextMenu}
+            className={`relative overflow-hidden bg-cocoa-800 min-h-0 flex-1 transition-shadow duration-150 ${expanded ? 'rounded-[1.75rem]' : 'rounded-[1.15rem]'} ${speaking ? 'ring-2 ring-mint-300' : 'ring-2 ring-transparent'}`}
+        >
             <video
                 ref={isLocal ? localVidRef : remoteVidRef}
                 autoPlay
@@ -393,13 +492,24 @@ const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remo
             />
             {!hasVideo && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                    <div
-                        className={`${avatarSize} rounded-full grid place-items-center font-bold text-white ${avatarBg}`}
-                        style={expanded ? { boxShadow: `0 0 60px ${avatarGlow}` } : undefined}
-                    >
-                        {(!isLocal && !other) ? <i className="fa-solid fa-user" /> : av(displayName)}
-                    </div>
-                    {expanded && <span className="text-sm font-bold text-ember-100/40">{displayName}</span>}
+                    {sharing && isLocal ? (
+                        <>
+                            <div className={`${avatarSize} rounded-full grid place-items-center bg-ember-400/20 text-ember-400`}>
+                                <i className="fa-solid fa-desktop" />
+                            </div>
+                            {expanded && <span className="text-sm font-bold text-ember-100/40">sharing your screen</span>}
+                        </>
+                    ) : (
+                        <>
+                            <div
+                                className={`${avatarSize} rounded-full grid place-items-center font-bold text-white ${avatarBg} ${speaking ? 'ring-2 ring-mint-300' : ''}`}
+                                style={expanded ? { boxShadow: `0 0 60px ${avatarGlow}` } : undefined}
+                            >
+                                {(!isLocal && !other) ? <i className="fa-solid fa-user" /> : av(displayName)}
+                            </div>
+                            {expanded && <span className="text-sm font-bold text-ember-100/40">{displayName}</span>}
+                        </>
+                    )}
                 </div>
             )}
             <div className="absolute top-2 left-2 right-2 flex items-center gap-1.5 rounded-full bg-cocoa-900/70 backdrop-blur-sm px-2.5 py-1.5 w-fit max-w-[calc(100%-1rem)]">
@@ -407,8 +517,232 @@ const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remo
                     <i className={`fa-solid text-[0.55rem] shrink-0 ${hasMic ? 'fa-microphone text-ember-100/50' : 'fa-microphone-slash text-berry-300/80'}`} />
                 )}
                 <span className="text-[0.6rem] font-bold text-ember-100/70 truncate">{displayName}</span>
+                {mutedForYou && !isLocal && (
+                    <i className="fa-solid fa-volume-xmark text-[0.55rem] text-berry-300 shrink-0" title="muted for you" />
+                )}
             </div>
+            {sharing && !isLocal && (
+                <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-cocoa-900/70 backdrop-blur-sm px-2 py-1">
+                    <i className="fa-solid fa-desktop text-[0.55rem] text-ember-400" />
+                    <span className="text-[0.55rem] font-bold text-ember-100/70">sharing</span>
+                </div>
+            )}
         </div>
+    )
+}
+
+const ScreenStage = ({ isLocalSharing, isRemoteSharing, screenVidRef, remoteVidRef, otherName, onStop }: {
+    isLocalSharing: boolean
+    isRemoteSharing: boolean
+    screenVidRef: (el: HTMLVideoElement | null) => void
+    remoteVidRef: (el: HTMLVideoElement | null) => void
+    otherName: string
+    onStop: () => void
+}) => (
+    <div className="relative flex-1 rounded-[1.75rem] overflow-hidden bg-black min-h-0">
+        {isLocalSharing && (
+            <video ref={screenVidRef} autoPlay playsInline muted className="h-full w-full object-contain" />
+        )}
+        {isRemoteSharing && !isLocalSharing && (
+            <video ref={remoteVidRef} autoPlay playsInline className="h-full w-full object-contain" />
+        )}
+        <div className="absolute top-3 left-3 flex items-center gap-2 rounded-full bg-cocoa-900/70 backdrop-blur-sm px-3.5 py-2">
+            <i className="fa-solid fa-desktop text-[0.6rem] text-ember-400" />
+            <span className="text-xs font-bold text-ember-100/80">
+                {isLocalSharing ? 'you are sharing your screen' : `${otherName || 'they'} is sharing their screen`}
+            </span>
+        </div>
+        {isLocalSharing && (
+            <button
+                onClick={onStop}
+                className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full bg-berry-300/20 backdrop-blur-md border border-berry-300/20 px-4 py-2 text-xs font-bold text-berry-300 hover:bg-berry-300/35 transition-colors"
+            >
+                <i className="fa-solid fa-stop" />
+                stop sharing
+            </button>
+        )}
+    </div>
+)
+
+const EndRoomModal = ({ open, onCancel, onConfirm }: {
+    open: boolean
+    onCancel: () => void
+    onConfirm: () => void
+}) => {
+    if (!open) return null
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+            onClick={onCancel}
+        >
+            <style>{`
+                @keyframes modalIn {
+                    from { opacity: 0; transform: scale(0.94) translateY(10px); }
+                    to   { opacity: 1; transform: scale(1) translateY(0); }
+                }
+            `}</style>
+            <div
+                onClick={e => e.stopPropagation()}
+                className="w-full max-w-sm rounded-[1.75rem] bg-plum-900 p-6 shadow-2xl ring-1 ring-white/[0.06]"
+                style={{ animation: 'modalIn 220ms cubic-bezier(0.4,0,0.2,1) both' }}
+            >
+                <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-berry-300/15 text-berry-300">
+                    <i className="fa-solid fa-arrow-right-from-bracket" />
+                </div>
+                <h3 className="text-center text-base font-bold text-ember-50">end this room?</h3>
+                <p className="mt-1.5 text-center text-sm font-semibold leading-5 text-ember-100/45">
+                    this will end the call for both of you and close the room.
+                </p>
+                <div className="mt-6 flex gap-2">
+                    <button
+                        onClick={onCancel}
+                        className="flex-1 rounded-full bg-cocoa-800 py-2.5 text-sm font-bold text-ember-100/70 hover:bg-cocoa-700 transition-colors"
+                    >
+                        cancel
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        className="flex-1 rounded-full bg-berry-300 py-2.5 text-sm font-bold text-white hover:bg-berry-400 transition-colors"
+                    >
+                        end room
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    )
+}
+
+const EndedScreen = ({ open, otherName, onLeave, onDismiss }: {
+    open: boolean
+    otherName: string
+    onLeave: () => void
+    onDismiss: () => void
+}) => {
+    if (!open) return null
+    return createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-cocoa-900/92 backdrop-blur-md px-4">
+            <style>{`
+                @keyframes endedIn {
+                    from { opacity: 0; transform: scale(0.94) translateY(10px); }
+                    to   { opacity: 1; transform: scale(1) translateY(0); }
+                }
+            `}</style>
+            <div
+                className="relative w-full max-w-sm rounded-[1.75rem] bg-plum-900 p-7 text-center shadow-2xl ring-1 ring-white/[0.06]"
+                style={{ animation: 'endedIn 260ms cubic-bezier(0.4,0,0.2,1) both' }}
+            >
+                <button
+                    onClick={onDismiss}
+                    className="absolute top-4 right-4 grid h-7 w-7 place-items-center rounded-full text-ember-100/40 hover:bg-cocoa-800 hover:text-ember-100/70 transition-colors"
+                >
+                    <i className="fa-solid fa-xmark text-xs" />
+                </button>
+                <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-ember-400/15 text-ember-400 text-lg">
+                    <i className="fa-solid fa-fire" />
+                </div>
+                <h3 className="text-lg font-bold text-ember-50">call ended</h3>
+                <p className="mt-2 text-sm font-semibold leading-5 text-ember-100/45">
+                    {otherName || 'the other person'} ended the room. thanks for hanging out.
+                </p>
+                <button
+                    onClick={onLeave}
+                    className="mt-6 w-full rounded-full bg-ember-400 py-2.5 text-sm font-bold text-white hover:bg-ember-500 transition-colors"
+                >
+                    leave room
+                </button>
+            </div>
+        </div>,
+        document.body
+    )
+}
+
+const TileContextMenu = ({ menu, remoteName, remoteVolume, remoteMuted, remoteHidden, localHidden, onSetVolume, onToggleMute, onToggleHideRemote, onToggleHideLocal, onClose }: {
+    menu: ContextMenuState
+    remoteName: string
+    remoteVolume: number
+    remoteMuted: boolean
+    remoteHidden: boolean
+    localHidden: boolean
+    onSetVolume: (v: number) => void
+    onToggleMute: () => void
+    onToggleHideRemote: () => void
+    onToggleHideLocal: () => void
+    onClose: () => void
+}) => {
+    const menuRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        const onDown = (e: MouseEvent) => {
+            if (menuRef.current && menuRef.current.contains(e.target as Node)) return
+            onClose()
+        }
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose()
+        }
+        window.addEventListener('mousedown', onDown, true)
+        window.addEventListener('keydown', onKey)
+        return () => {
+            window.removeEventListener('mousedown', onDown, true)
+            window.removeEventListener('keydown', onKey)
+        }
+    }, [onClose])
+
+    const left = Math.min(menu.x, (typeof window !== 'undefined' ? window.innerWidth : 1000) - 224)
+    const top = Math.min(menu.y, (typeof window !== 'undefined' ? window.innerHeight : 800) - 240)
+
+    return createPortal(
+        <div
+            ref={menuRef}
+            style={{ position: 'fixed', top: Math.max(top, 8), left: Math.max(left, 8) }}
+            className="z-[9999] w-52 rounded-2xl bg-plum-900 p-1.5 shadow-2xl ring-1 ring-white/[0.08]"
+            onContextMenu={e => e.preventDefault()}
+        >
+            {menu.target === 'remote' ? (
+                <>
+                    <div className="px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-ember-100/30 truncate">
+                        {remoteName || 'this user'}
+                    </div>
+                    {[100, 150, 200].map(v => (
+                        <button
+                            key={v}
+                            onClick={() => { onSetVolume(v); onClose() }}
+                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-colors ${remoteVolume === v && !remoteMuted ? 'bg-cocoa-800 text-ember-50' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                        >
+                            <span>
+                                <i className="fa-solid fa-volume-high mr-2 text-[0.6rem]" />
+                                volume {v}%
+                            </span>
+                            {remoteVolume === v && !remoteMuted && <i className="fa-solid fa-check text-[0.6rem]" />}
+                        </button>
+                    ))}
+                    <div className="my-1 h-px bg-white/[0.06]" />
+                    <button
+                        onClick={() => { onToggleMute(); onClose() }}
+                        className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${remoteMuted ? 'bg-berry-300/15 text-berry-300' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                    >
+                        <i className={`fa-solid ${remoteMuted ? 'fa-volume-xmark' : 'fa-volume-slash'} w-3 text-center`} />
+                        {remoteMuted ? 'unmute for me' : 'mute for me'}
+                    </button>
+                    <button
+                        onClick={() => { onToggleHideRemote(); onClose() }}
+                        className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${remoteHidden ? 'bg-berry-300/15 text-berry-300' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                    >
+                        <i className={`fa-solid ${remoteHidden ? 'fa-eye' : 'fa-eye-slash'} w-3 text-center`} />
+                        {remoteHidden ? 'show their video' : 'hide their video'}
+                    </button>
+                </>
+            ) : (
+                <button
+                    onClick={() => { onToggleHideLocal(); onClose() }}
+                    className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${localHidden ? 'bg-berry-300/15 text-berry-300' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                >
+                    <i className={`fa-solid ${localHidden ? 'fa-eye' : 'fa-eye-slash'} w-3 text-center`} />
+                    {localHidden ? 'show my preview' : 'hide my preview'}
+                </button>
+            )}
+        </div>,
+        document.body
     )
 }
 
@@ -436,6 +770,9 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const [cam, setCam] = useState(false)
     const [remoteCam, setRemoteCam] = useState(false)
     const [remoteMic, setRemoteMic] = useState(false)
+    const [screenSharing, setScreenSharing] = useState(false)
+    const [remoteScreenSharing, setRemoteScreenSharing] = useState(false)
+    const [screenPreview, setScreenPreview] = useState<MediaStream | null>(null)
     const [busy, setBusy] = useState(false)
     const [toasts, setToasts] = useState<Toast[]>([])
     const [linkCopied, setLinkCopied] = useState(false)
@@ -449,11 +786,21 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const [speakerDevice, setSpeakerDevice] = useState('')
     const [callDuration, setCallDuration] = useState(0)
     const [otherTyping, setOtherTyping] = useState(false)
+    const [confirmEnd, setConfirmEnd] = useState(false)
+    const [roomEnded, setRoomEnded] = useState(false)
+    const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
+    const [remoteVolume, setRemoteVolume] = useState(100)
+    const [remoteMutedForMe, setRemoteMutedForMe] = useState(false)
+    const [remoteVideoHidden, setRemoteVideoHidden] = useState(false)
+    const [localVideoHidden, setLocalVideoHidden] = useState(false)
+    const [localSpeaking, setLocalSpeaking] = useState(false)
+    const [remoteSpeaking, setRemoteSpeaking] = useState(false)
     const bottom = useRef<HTMLDivElement>(null)
     const player = useRef<PlayerHandle>(null)
 
     const localVidEls = useRef<Set<HTMLVideoElement>>(new Set())
     const remoteVidEls = useRef<Set<HTMLVideoElement>>(new Set())
+    const screenVidEls = useRef<Set<HTMLVideoElement>>(new Set())
     const localStream = useRef<MediaStream | null>(null)
     const remoteStream = useRef<MediaStream | null>(null)
 
@@ -472,12 +819,19 @@ export const Room = ({ peer, name, leave, link }: Props) => {
         }
     }, [])
 
+    const screenVidRef = useCallback((el: HTMLVideoElement | null) => {
+        if (!el) return
+        screenVidEls.current.add(el)
+        el.srcObject = screenPreview
+    }, [screenPreview])
+
     const localRef = useRef<MediaStream | null>(null)
     const remoteRef = useRef<MediaStream | null>(null)
     const trackIds = useRef(new Set<string>())
     const timer = useRef<number | null>(null)
     const hoverTimer = useRef<number | null>(null)
     const remoteAudioEl = useRef<HTMLAudioElement | null>(null)
+    const pumpAudioEl = useRef<HTMLAudioElement | null>(null)
     const callStart = useRef<number | null>(null)
     const durationTimer = useRef<number | null>(null)
     const otherRef = useRef('')
@@ -485,6 +839,16 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const typingTimer = useRef<number | null>(null)
     const typingActive = useRef(false)
     const remoteTypingTimer = useRef<number | null>(null)
+    const screenTrackRef = useRef<MediaStreamTrack | null>(null)
+    const wasCamOnBeforeShare = useRef(false)
+    const endedRef = useRef(false)
+    const audioCtxRef = useRef<AudioContext | null>(null)
+    const remoteGainRef = useRef<GainNode | null>(null)
+    const remoteGainSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
+    const remoteVolumeRef = useRef(100)
+    const remoteMutedRef = useRef(false)
+    const localSpeakingCleanup = useRef<(() => void) | null>(null)
+    const remoteSpeakingCleanup = useRef<(() => void) | null>(null)
 
     const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
         setToasts(prev => {
@@ -494,6 +858,74 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             return [...prev, item]
         })
     }, [])
+
+    const ensureAudioCtx = useCallback(() => {
+        if (!audioCtxRef.current) {
+            const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+            audioCtxRef.current = new Ctor()
+        }
+        if (audioCtxRef.current.state === 'suspended') void audioCtxRef.current.resume()
+        return audioCtxRef.current
+    }, [])
+
+    useEffect(() => {
+        const resume = () => {
+            if (audioCtxRef.current?.state === 'suspended') void audioCtxRef.current.resume()
+            void remoteAudioEl.current?.play().catch(() => { })
+            void pumpAudioEl.current?.play().catch(() => { })
+        }
+        window.addEventListener('pointerdown', resume)
+        window.addEventListener('keydown', resume)
+        return () => {
+            window.removeEventListener('pointerdown', resume)
+            window.removeEventListener('keydown', resume)
+        }
+    }, [])
+
+    const watchSpeaking = useCallback((stream: MediaStream, setSpeaking: (v: boolean) => void) => {
+        if (!stream.getAudioTracks().length) return () => { }
+        const ctx = ensureAudioCtx()
+        let source: MediaStreamAudioSourceNode
+        try {
+            source = ctx.createMediaStreamSource(stream)
+        } catch {
+            return () => { }
+        }
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 512
+        analyser.smoothingTimeConstant = 0.6
+        source.connect(analyser)
+        const data = new Uint8Array(analyser.frequencyBinCount)
+        let raf = 0
+        let silenceTimer: number | null = null
+        let stopped = false
+        const tick = () => {
+            if (stopped) return
+            analyser.getByteTimeDomainData(data)
+            let sum = 0
+            for (let i = 0; i < data.length; i++) {
+                const v = (data[i] - 128) / 128
+                sum += v * v
+            }
+            const rms = Math.sqrt(sum / data.length)
+            if (rms > 0.045) {
+                setSpeaking(true)
+                if (silenceTimer) { window.clearTimeout(silenceTimer); silenceTimer = null }
+            } else if (!silenceTimer) {
+                silenceTimer = window.setTimeout(() => setSpeaking(false), 400)
+            }
+            raf = requestAnimationFrame(tick)
+        }
+        tick()
+        return () => {
+            stopped = true
+            cancelAnimationFrame(raf)
+            if (silenceTimer) window.clearTimeout(silenceTimer)
+            setSpeaking(false)
+            try { source.disconnect() } catch { }
+            try { analyser.disconnect() } catch { }
+        }
+    }, [ensureAudioCtx])
 
     useEffect(() => {
         otherRef.current = other
@@ -552,9 +984,10 @@ export const Room = ({ peer, name, leave, link }: Props) => {
         if (msg.kind === 'media-offer') void answer(msg.payload as RTCSessionDescriptionInit)
         if (msg.kind === 'media-answer') void peer.conn.setRemoteDescription(msg.payload as RTCSessionDescriptionInit).catch(() => { })
         if (msg.kind === 'media-state') {
-            const state = msg.payload as { camOn?: boolean; micOn?: boolean }
+            const state = msg.payload as { camOn?: boolean; micOn?: boolean; screenOn?: boolean }
             setRemoteCam(!!state.camOn)
             setRemoteMic(!!state.micOn)
+            if (state.screenOn !== undefined) setRemoteScreenSharing(state.screenOn)
         }
         if (msg.kind === 'typing') {
             const state = msg.payload as { typing: boolean }
@@ -563,6 +996,12 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             if (state.typing) {
                 remoteTypingTimer.current = window.setTimeout(() => setOtherTyping(false), 3000)
             }
+        }
+        if (msg.kind === 'end') {
+            endedRef.current = true
+            setLeft(true)
+            setRemoteScreenSharing(false)
+            setRoomEnded(true)
         }
         if (msg.kind === 'name') {
             const incoming = (msg.payload as { name: string }).name
@@ -588,17 +1027,14 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             remoteRef.current = stream
             remoteStream.current = stream
             setRemote(stream)
-            if (remoteAudioEl.current) {
-                remoteAudioEl.current.srcObject = stream
-                void remoteAudioEl.current.play().catch(() => { })
-            }
             const videoOnly = new MediaStream(stream.getVideoTracks())
             remoteVidEls.current.forEach(el => { el.srcObject = videoOnly })
         }
         const handleClose = () => {
             setLeft(true)
             setOtherTyping(false)
-            toast(`${otherRef.current || 'they'} disconnected`, 'error')
+            setRemoteScreenSharing(false)
+            if (!endedRef.current) toast(`${otherRef.current || 'they'} disconnected`, 'error')
         }
         const handleNegotiationNeeded = () => { void negotiate() }
         const handleConnectionStateChange = () => {
@@ -626,7 +1062,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                 timer.current = window.setTimeout(() => {
                     if (conn.connectionState === 'disconnected') {
                         setLeft(true)
-                        toast(`${otherRef.current || 'they'} disconnected`, 'error')
+                        if (!endedRef.current) toast(`${otherRef.current || 'they'} disconnected`, 'error')
                     }
                     timer.current = null
                 }, 30000)
@@ -672,13 +1108,81 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     useEffect(() => {
         if (!remote) return
         remoteStream.current = remote
-        if (remoteAudioEl.current) {
-            remoteAudioEl.current.srcObject = remote
-            void remoteAudioEl.current.play().catch(() => { })
-        }
         const videoOnly = new MediaStream(remote.getVideoTracks())
         remoteVidEls.current.forEach(el => { el.srcObject = videoOnly })
     }, [remote])
+
+    useEffect(() => {
+        const pump = pumpAudioEl.current
+        if (!pump) return
+        if (remote && remote.getAudioTracks().length) {
+            pump.srcObject = remote
+            void pump.play().catch(() => { })
+        } else {
+            pump.srcObject = null
+        }
+    }, [remote])
+
+    useEffect(() => {
+        localSpeakingCleanup.current?.()
+        localSpeakingCleanup.current = null
+        if (local && local.getAudioTracks().length) {
+            localSpeakingCleanup.current = watchSpeaking(local, setLocalSpeaking)
+        } else {
+            setLocalSpeaking(false)
+        }
+        return () => {
+            localSpeakingCleanup.current?.()
+            localSpeakingCleanup.current = null
+        }
+    }, [local, watchSpeaking])
+
+    useEffect(() => {
+        remoteSpeakingCleanup.current?.()
+        remoteSpeakingCleanup.current = null
+        if (remote && remote.getAudioTracks().length) {
+            remoteSpeakingCleanup.current = watchSpeaking(remote, setRemoteSpeaking)
+            try {
+                const ctx = ensureAudioCtx()
+                if (remoteGainSourceRef.current) { try { remoteGainSourceRef.current.disconnect() } catch { } }
+                const source = ctx.createMediaStreamSource(remote)
+                const gain = ctx.createGain()
+                gain.gain.value = remoteMutedRef.current ? 0 : remoteVolumeRef.current / 100
+                const dest = ctx.createMediaStreamDestination()
+                source.connect(gain)
+                gain.connect(dest)
+                remoteGainSourceRef.current = source
+                remoteGainRef.current = gain
+                if (remoteAudioEl.current) {
+                    remoteAudioEl.current.srcObject = dest.stream
+                    void remoteAudioEl.current.play().catch(() => { })
+                }
+            } catch {
+                if (remoteAudioEl.current) {
+                    remoteAudioEl.current.srcObject = remote
+                    void remoteAudioEl.current.play().catch(() => { })
+                }
+            }
+        } else {
+            setRemoteSpeaking(false)
+        }
+        return () => {
+            remoteSpeakingCleanup.current?.()
+            remoteSpeakingCleanup.current = null
+        }
+    }, [remote, watchSpeaking, ensureAudioCtx])
+
+    useEffect(() => {
+        remoteVolumeRef.current = remoteVolume
+        remoteMutedRef.current = remoteMutedForMe
+        if (remoteGainRef.current) {
+            remoteGainRef.current.gain.value = remoteMutedForMe ? 0 : remoteVolume / 100
+        }
+    }, [remoteVolume, remoteMutedForMe])
+
+    useEffect(() => {
+        screenVidEls.current.forEach(el => { el.srcObject = screenPreview })
+    }, [screenPreview])
 
     useEffect(() => {
         const audio = remoteAudioEl.current as SinkAudio | null
@@ -688,14 +1192,18 @@ export const Room = ({ peer, name, leave, link }: Props) => {
 
     useEffect(() => {
         const remoteAudio = remoteAudioEl.current
+        const pump = pumpAudioEl.current
         return () => {
             if (timer.current) window.clearTimeout(timer.current)
             if (hoverTimer.current) window.clearTimeout(hoverTimer.current)
             if (durationTimer.current) window.clearInterval(durationTimer.current)
             if (typingTimer.current) window.clearTimeout(typingTimer.current)
             if (remoteTypingTimer.current) window.clearTimeout(remoteTypingTimer.current)
+            screenTrackRef.current?.stop()
             localRef.current?.getTracks().forEach(t => t.stop())
             if (remoteAudio) { remoteAudio.srcObject = null }
+            if (pump) { pump.srcObject = null }
+            audioCtxRef.current?.close().catch(() => { })
         }
     }, [])
 
@@ -708,6 +1216,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
 
     const startMedia = async (withVideo: boolean) => {
         setBusy(true)
+        ensureAudioCtx()
         try {
             let stream = localRef.current
             if (!stream) {
@@ -727,14 +1236,17 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                 }
                 track.enabled = true
             }
+            if (screenSharing) {
+                stream.getVideoTracks().forEach(t => { t.enabled = false })
+            }
             await tuneAudio(peer.conn)
             localRef.current = stream
             setLocal(stream)
             const nextMic = stream.getAudioTracks().some(t => t.enabled)
-            const nextCam = stream.getVideoTracks().some(t => t.enabled)
+            const nextCam = screenSharing ? false : stream.getVideoTracks().some(t => t.enabled)
             setMic(nextMic)
             setCam(nextCam)
-            bc('media-state', { micOn: nextMic, camOn: nextCam })
+            bc('media-state', { micOn: nextMic, camOn: nextCam, screenOn: screenSharing })
         } catch {
             toast('camera or microphone permission was blocked', 'error')
         } finally {
@@ -779,6 +1291,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     }
 
     const toggleMic = () => {
+        ensureAudioCtx()
         const stream = localRef.current
         if (!stream?.getAudioTracks().length) { void startMedia(false); return }
         const next = !mic
@@ -788,12 +1301,72 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     }
 
     const toggleCam = () => {
+        ensureAudioCtx()
+        if (screenSharing) return
         const stream = localRef.current
         if (!stream?.getVideoTracks().length) { void startMedia(true); return }
         const next = !cam
         stream.getVideoTracks().forEach(t => { t.enabled = next })
         setCam(next)
         bc('media-state', { micOn: mic, camOn: next })
+    }
+
+    const startScreenShare = async () => {
+        if (busy || screenSharing) return
+        setBusy(true)
+        try {
+            const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+            const screenTrack = display.getVideoTracks()[0]
+            if (!screenTrack) return
+            screenTrack.contentHint = 'detail'
+            wasCamOnBeforeShare.current = cam
+            const sender = peer.conn.getSenders().find(s => s.track?.kind === 'video')
+            if (sender) {
+                await sender.replaceTrack(screenTrack)
+            } else {
+                peer.conn.addTrack(screenTrack, display)
+                trackIds.current.add(screenTrack.id)
+            }
+            const camTrack = localRef.current?.getVideoTracks()[0]
+            if (camTrack) camTrack.enabled = false
+            screenTrackRef.current = screenTrack
+            setCam(false)
+            setScreenSharing(true)
+            setScreenPreview(display)
+            bc('media-state', { micOn: mic, camOn: false, screenOn: true })
+            screenTrack.onended = () => { void stopScreenShare() }
+        } catch {
+            toast('screen share was blocked or cancelled', 'error')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const stopScreenShare = async () => {
+        const screenTrack = screenTrackRef.current
+        if (!screenTrack) return
+        setBusy(true)
+        try {
+            const sender = peer.conn.getSenders().find(s => s.track === screenTrack)
+            const camTrack = localRef.current?.getVideoTracks()[0]
+            if (sender) {
+                await sender.replaceTrack(camTrack ?? null)
+            }
+            screenTrack.stop()
+            screenTrackRef.current = null
+            setScreenPreview(null)
+            if (camTrack) camTrack.enabled = wasCamOnBeforeShare.current
+            setCam(wasCamOnBeforeShare.current)
+            setScreenSharing(false)
+            bc('media-state', { micOn: mic, camOn: wasCamOnBeforeShare.current, screenOn: false })
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const toggleScreenShare = () => {
+        if (screenSharing) void stopScreenShare()
+        else void startScreenShare()
     }
 
     useEffect(() => {
@@ -907,8 +1480,29 @@ export const Room = ({ peer, name, leave, link }: Props) => {
         })
     }
 
+    const requestEnd = () => {
+        setConfirmEnd(true)
+    }
+
+    const cancelEnd = () => {
+        setConfirmEnd(false)
+    }
+
+    const confirmLeave = () => {
+        setConfirmEnd(false)
+        endedRef.current = true
+        bc('end', null)
+        setTimeout(leave, 60)
+    }
+
+    const openContextMenu = (e: React.MouseEvent, target: ContextTarget) => {
+        e.preventDefault()
+        setContextMenu({ x: e.clientX, y: e.clientY, target })
+    }
+
     const groups = toGroups(messages, name)
     const label = left ? `${other || 'they'} left` : other ? `${name} + ${other}` : 'waiting...'
+    const sharingActive = screenSharing || remoteScreenSharing
 
     const callControls = (
         <>
@@ -943,8 +1537,9 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                         </button>
                         <button
                             onClick={toggleCam}
+                            disabled={screenSharing}
                             title="Toggle camera (V)"
-                            className={`w-full rounded-full py-2 text-xs font-bold transition-colors ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
+                            className={`w-full rounded-full py-2 text-xs font-bold transition-colors disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
                         >
                             <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
                         </button>
@@ -952,7 +1547,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                     {(mics.length > 1 || speakers.length > 1) && (
                         <div className="flex flex-col gap-1.5 w-full">
                             {mics.length > 1 && (
-                                <DeviceSelect
+                                <DeviceDropdown
                                     icon="fa-solid fa-microphone"
                                     value={micDevice}
                                     options={mics}
@@ -962,7 +1557,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                                 />
                             )}
                             {speakers.length > 1 && (
-                                <DeviceSelect
+                                <DeviceDropdown
                                     icon="fa-solid fa-headphones"
                                     value={speakerDevice}
                                     options={speakers}
@@ -981,6 +1576,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     return (
         <div className="flex flex-col h-screen overflow-hidden bg-cocoa-900 text-ember-50">
             <audio ref={remoteAudioEl} autoPlay className="hidden" />
+            <audio ref={pumpAudioEl} autoPlay muted playsInline className="hidden" />
 
             <ToastStack toasts={toasts} />
 
@@ -1030,14 +1626,32 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                     />
                     <div className="w-px h-4 bg-ember-100/10 mx-1" />
                     <button
-                        onClick={leave}
+                        onClick={requestEnd}
                         className="flex items-center gap-1.5 rounded-xl bg-berry-300/10 hover:bg-berry-300/20 px-3 py-1.5 text-xs font-bold text-berry-300/70 hover:text-berry-300 transition-all"
                     >
                         <i className="fa-solid fa-arrow-right-from-bracket text-[0.6rem]" />
-                        <span>leave</span>
+                        <span>end room</span>
                     </button>
                 </div>
             </header>
+
+            <EndRoomModal open={confirmEnd} onCancel={cancelEnd} onConfirm={confirmLeave} />
+            <EndedScreen open={roomEnded} otherName={other} onLeave={leave} onDismiss={() => setRoomEnded(false)} />
+            {contextMenu && (
+                <TileContextMenu
+                    menu={contextMenu}
+                    remoteName={other}
+                    remoteVolume={remoteVolume}
+                    remoteMuted={remoteMutedForMe}
+                    remoteHidden={remoteVideoHidden}
+                    localHidden={localVideoHidden}
+                    onSetVolume={v => setRemoteVolume(v)}
+                    onToggleMute={() => setRemoteMutedForMe(v => !v)}
+                    onToggleHideRemote={() => setRemoteVideoHidden(v => !v)}
+                    onToggleHideLocal={() => setLocalVideoHidden(v => !v)}
+                    onClose={() => setContextMenu(null)}
+                />
+            )}
 
             <div className="flex flex-1 gap-3 p-3 min-h-0">
 
@@ -1056,10 +1670,15 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                                 mic={mic}
                                 remoteCam={remoteCam}
                                 remoteMic={remoteMic}
+                                sharing={remoteScreenSharing}
                                 name={name}
                                 other={other}
                                 localVidRef={localVidRef}
                                 remoteVidRef={remoteVidRef}
+                                speaking={remoteSpeaking}
+                                onContextMenu={e => openContextMenu(e, 'remote')}
+                                forceHideVideo={remoteVideoHidden}
+                                mutedForYou={remoteMutedForMe}
                             />
                             <VideoTile
                                 isLocal={true}
@@ -1070,209 +1689,242 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                                 mic={mic}
                                 remoteCam={remoteCam}
                                 remoteMic={remoteMic}
+                                sharing={screenSharing}
                                 name={name}
                                 other={other}
                                 localVidRef={localVidRef}
                                 remoteVidRef={remoteVidRef}
+                                speaking={localSpeaking}
+                                onContextMenu={e => openContextMenu(e, 'local')}
+                                forceHideVideo={localVideoHidden}
                             />
                             {callControls}
                         </div>
                     </div>
                 </SidePanel>
 
-                <div
-                    className="flex-1 flex flex-col self-stretch min-w-0 min-h-0 gap-3"
-                    style={{ display: !watchOpen && callOpen ? 'flex' : 'none' }}
-                >
-                    <style>{`
-                        @keyframes callExpand {
-                            from { opacity: 0; transform: scale(0.97) translateY(8px); }
-                            to   { opacity: 1; transform: scale(1) translateY(0); }
-                        }
-                    `}</style>
-                    <div
-                        className="relative flex flex-1 gap-3 min-h-0 rounded-[1.75rem] overflow-hidden"
-                        style={{ animation: 'callExpand 380ms cubic-bezier(0.4,0,0.2,1) both' }}
-                    >
-                        <VideoTile
-                            isLocal={false}
-                            expanded={true}
-                            local={local}
-                            remote={remote}
-                            cam={cam}
-                            mic={mic}
-                            remoteCam={remoteCam}
-                            remoteMic={remoteMic}
-                            name={name}
-                            other={other}
-                            localVidRef={localVidRef}
+                {sharingActive ? (
+                    <main className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
+                        <ScreenStage
+                            isLocalSharing={screenSharing}
+                            isRemoteSharing={remoteScreenSharing}
+                            screenVidRef={screenVidRef}
                             remoteVidRef={remoteVidRef}
+                            otherName={other}
+                            onStop={toggleScreenShare}
                         />
-                        <VideoTile
-                            isLocal={true}
-                            expanded={true}
-                            local={local}
-                            remote={remote}
-                            cam={cam}
-                            mic={mic}
-                            remoteCam={remoteCam}
-                            remoteMic={remoteMic}
-                            name={name}
-                            other={other}
-                            localVidRef={localVidRef}
-                            remoteVidRef={remoteVidRef}
-                        />
+                    </main>
+                ) : (
+                    <>
+                        <div
+                            className="flex-1 flex flex-col self-stretch min-w-0 min-h-0 gap-3"
+                            style={{ display: !watchOpen && callOpen ? 'flex' : 'none' }}
+                        >
+                            <style>{`
+                                @keyframes callExpand {
+                                    from { opacity: 0; transform: scale(0.97) translateY(8px); }
+                                    to   { opacity: 1; transform: scale(1) translateY(0); }
+                                }
+                            `}</style>
+                            <div
+                                className="relative flex flex-1 gap-3 min-h-0 rounded-[1.75rem] overflow-hidden"
+                                style={{ animation: 'callExpand 380ms cubic-bezier(0.4,0,0.2,1) both' }}
+                            >
+                                <VideoTile
+                                    isLocal={false}
+                                    expanded={true}
+                                    local={local}
+                                    remote={remote}
+                                    cam={cam}
+                                    mic={mic}
+                                    remoteCam={remoteCam}
+                                    remoteMic={remoteMic}
+                                    sharing={remoteScreenSharing}
+                                    name={name}
+                                    other={other}
+                                    localVidRef={localVidRef}
+                                    remoteVidRef={remoteVidRef}
+                                    speaking={remoteSpeaking}
+                                    onContextMenu={e => openContextMenu(e, 'remote')}
+                                    forceHideVideo={remoteVideoHidden}
+                                    mutedForYou={remoteMutedForMe}
+                                />
+                                <VideoTile
+                                    isLocal={true}
+                                    expanded={true}
+                                    local={local}
+                                    remote={remote}
+                                    cam={cam}
+                                    mic={mic}
+                                    remoteCam={remoteCam}
+                                    remoteMic={remoteMic}
+                                    sharing={screenSharing}
+                                    name={name}
+                                    other={other}
+                                    localVidRef={localVidRef}
+                                    remoteVidRef={remoteVidRef}
+                                    speaking={localSpeaking}
+                                    onContextMenu={e => openContextMenu(e, 'local')}
+                                    forceHideVideo={localVideoHidden}
+                                />
 
-                        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
-                            {!local ? (
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        className="flex items-center gap-2 rounded-full bg-cocoa-800/90 backdrop-blur px-5 py-2.5 text-xs font-bold text-ember-100/70 hover:bg-cocoa-700 disabled:opacity-40 transition-all"
-                                        disabled={busy}
-                                        onClick={() => startMedia(false)}
-                                    >
-                                        <i className="fa-solid fa-microphone" />
-                                        voice only
-                                    </button>
-                                    <button
-                                        className="flex items-center gap-2 rounded-full bg-ember-400/90 backdrop-blur px-5 py-2.5 text-xs font-bold text-white hover:bg-ember-500 disabled:opacity-40 transition-all"
-                                        disabled={busy}
-                                        onClick={() => startMedia(true)}
-                                    >
-                                        <i className="fa-solid fa-video" />
-                                        join with camera
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2 rounded-full bg-cocoa-900/80 backdrop-blur px-4 py-2.5">
-                                    <button
-                                        onClick={toggleMic}
-                                        title="Toggle mic (M)"
-                                        className={`flex items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
-                                    >
-                                        <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
-                                    </button>
-                                    <button
-                                        onClick={toggleCam}
-                                        title="Toggle camera (V)"
-                                        className={`flex items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
-                                    >
-                                        <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
-                                    </button>
-                                    {(mics.length > 1 || speakers.length > 1) && (
-                                        <>
-                                            <div className="w-px h-5 bg-ember-100/10 mx-1" />
-                                            {mics.length > 1 && (
-                                                <DeviceSelect
-                                                    icon="fa-solid fa-microphone"
-                                                    value={micDevice}
-                                                    options={mics}
-                                                    fallback="Default mic"
-                                                    onChange={switchMic}
-                                                    disabled={busy}
-                                                />
+                                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
+                                    {!local ? (
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                className="flex items-center gap-2 rounded-full bg-cocoa-800/90 backdrop-blur px-5 py-2.5 text-xs font-bold text-ember-100/70 hover:bg-cocoa-700 disabled:opacity-40 transition-all"
+                                                disabled={busy}
+                                                onClick={() => startMedia(false)}
+                                            >
+                                                <i className="fa-solid fa-microphone" />
+                                                voice only
+                                            </button>
+                                            <button
+                                                className="flex items-center gap-2 rounded-full bg-ember-400/90 backdrop-blur px-5 py-2.5 text-xs font-bold text-white hover:bg-ember-500 disabled:opacity-40 transition-all"
+                                                disabled={busy}
+                                                onClick={() => startMedia(true)}
+                                            >
+                                                <i className="fa-solid fa-video" />
+                                                join with camera
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 rounded-full bg-cocoa-900/80 backdrop-blur px-4 py-2.5">
+                                            <button
+                                                onClick={toggleMic}
+                                                title="Toggle mic (M)"
+                                                className={`flex items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
+                                            >
+                                                <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
+                                            </button>
+                                            <button
+                                                onClick={toggleCam}
+                                                disabled={screenSharing}
+                                                title="Toggle camera (V)"
+                                                className={`flex items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
+                                            >
+                                                <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
+                                            </button>
+                                            {(mics.length > 1 || speakers.length > 1) && (
+                                                <>
+                                                    <div className="w-px h-5 bg-ember-100/10 mx-1" />
+                                                    {mics.length > 1 && (
+                                                        <DeviceDropdown
+                                                            icon="fa-solid fa-microphone"
+                                                            value={micDevice}
+                                                            options={mics}
+                                                            fallback="Default mic"
+                                                            onChange={switchMic}
+                                                            disabled={busy}
+                                                        />
+                                                    )}
+                                                    {speakers.length > 1 && (
+                                                        <DeviceDropdown
+                                                            icon="fa-solid fa-headphones"
+                                                            value={speakerDevice}
+                                                            options={speakers}
+                                                            fallback="Default output"
+                                                            onChange={setSpeakerDevice}
+                                                            disabled={busy}
+                                                        />
+                                                    )}
+                                                </>
                                             )}
-                                            {speakers.length > 1 && (
-                                                <DeviceSelect
-                                                    icon="fa-solid fa-headphones"
-                                                    value={speakerDevice}
-                                                    options={speakers}
-                                                    fallback="Default output"
-                                                    onChange={setSpeakerDevice}
-                                                    disabled={busy}
-                                                />
-                                            )}
-                                        </>
+                                        </div>
                                     )}
                                 </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {watchOpen && (
-                    <main className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
-                        <section
-                            className="relative flex-1 rounded-[1.75rem] overflow-hidden bg-cocoa-800 min-h-0"
-                            onMouseEnter={handleVideoMouseEnter}
-                            onMouseLeave={handleVideoMouseLeave}
-                        >
-                            <div className={current ? 'contents' : 'hidden'}>
-                                <Player
-                                    url={current?.url ?? ''}
-                                    ref={player}
-                                    onPlay={() => bc('play', null)}
-                                    onPause={() => bc('pause', null)}
-                                    onSeek={t => bc('seek', t)}
-                                />
-                                <div
-                                    className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${videoHovered ? 'opacity-100' : 'opacity-0'}`}
-                                    style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 18%, transparent 72%, rgba(0,0,0,0.7) 100%)' }}
-                                />
-                                <div className={`absolute top-3 right-3 flex items-center gap-2 transition-all duration-300 ${videoHovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-1 pointer-events-none'}`}>
-                                    <button
-                                        onClick={skip}
-                                        className="flex items-center gap-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 px-4 py-2 text-xs font-bold text-white/90 hover:bg-black/60 transition-colors"
-                                    >
-                                        <i className="fa-solid fa-forward-step" />
-                                        skip
-                                    </button>
-                                    <button
-                                        onClick={stop}
-                                        className="flex items-center gap-1.5 rounded-full bg-berry-300/20 backdrop-blur-md border border-berry-300/20 px-4 py-2 text-xs font-bold text-berry-300 hover:bg-berry-300/35 transition-colors"
-                                    >
-                                        <i className="fa-solid fa-stop" />
-                                        stop
-                                    </button>
-                                </div>
-                                <div className={`absolute bottom-0 left-0 right-0 transition-all duration-300 ${videoHovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
-                                    <QueueBar
-                                        show={showQueue}
-                                        setShow={setShowQueue}
-                                        ytError={ytError}
-                                        input={input}
-                                        setInput={setInput}
-                                        setYtError={setYtError}
-                                        add={addYT}
-                                        current={current}
-                                        queue={queue}
-                                        onReorder={reorderQueue}
-                                    />
-                                </div>
                             </div>
+                        </div>
 
-                            {!current && (
-                                <div className="grid h-full place-items-center px-6 text-center">
-                                    <div className="max-w-sm space-y-5">
-                                        <div className="mx-auto grid h-20 w-15 place-items-center rounded-[1.5rem] text-3xl text-ember-400">
-                                            <img src="assets/logo.svg" alt="Bonfire logo" />
+                        {watchOpen && (
+                            <main className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
+                                <section
+                                    className="relative flex-1 rounded-[1.75rem] overflow-hidden bg-cocoa-800 min-h-0"
+                                    onMouseEnter={handleVideoMouseEnter}
+                                    onMouseLeave={handleVideoMouseLeave}
+                                >
+                                    <div className={current ? 'contents' : 'hidden'}>
+                                        <Player
+                                            url={current?.url ?? ''}
+                                            ref={player}
+                                            onPlay={() => bc('play', null)}
+                                            onPause={() => bc('pause', null)}
+                                            onSeek={t => bc('seek', t)}
+                                        />
+                                        <div
+                                            className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${videoHovered ? 'opacity-100' : 'opacity-0'}`}
+                                            style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 18%, transparent 72%, rgba(0,0,0,0.7) 100%)' }}
+                                        />
+                                        <div className={`absolute top-3 right-3 flex items-center gap-2 transition-all duration-300 ${videoHovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-1 pointer-events-none'}`}>
+                                            <button
+                                                onClick={skip}
+                                                className="flex items-center gap-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 px-4 py-2 text-xs font-bold text-white/90 hover:bg-black/60 transition-colors"
+                                            >
+                                                <i className="fa-solid fa-forward-step" />
+                                                skip
+                                            </button>
+                                            <button
+                                                onClick={stop}
+                                                className="flex items-center gap-1.5 rounded-full bg-berry-300/20 backdrop-blur-md border border-berry-300/20 px-4 py-2 text-xs font-bold text-berry-300 hover:bg-berry-300/35 transition-colors"
+                                            >
+                                                <i className="fa-solid fa-stop" />
+                                                stop
+                                            </button>
                                         </div>
-                                        <div>
-                                            <h2 className="text-2xl font-bold text-ember-50">ready when you are</h2>
-                                            <p className="mt-2 text-sm font-semibold leading-6 text-ember-100/45">
-                                                {left ? `${other} left the room.` : other ? 'add a youtube video to get started.' : 'waiting for someone to join.'}
-                                            </p>
-                                        </div>
-                                        {other && !left && (
+                                        <div className={`absolute bottom-0 left-0 right-0 transition-all duration-300 ${videoHovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
                                             <QueueBar
-                                                show={false}
-                                                setShow={() => { }}
+                                                show={showQueue}
+                                                setShow={setShowQueue}
                                                 ytError={ytError}
                                                 input={input}
                                                 setInput={setInput}
                                                 setYtError={setYtError}
                                                 add={addYT}
-                                                current={null}
+                                                current={current}
                                                 queue={queue}
                                                 onReorder={reorderQueue}
-                                                inline
+                                                onScreenShare={toggleScreenShare}
+                                                screenBusy={busy}
                                             />
-                                        )}
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                        </section>
-                    </main>
+
+                                    {!current && (
+                                        <div className="grid h-full place-items-center px-6 text-center">
+                                            <div className="max-w-sm space-y-5">
+                                                <div className="mx-auto grid h-20 w-15 place-items-center rounded-[1.5rem] text-3xl text-ember-400">
+                                                    <img src="assets/logo.svg" alt="Bonfire logo" />
+                                                </div>
+                                                <div>
+                                                    <h2 className="text-2xl font-bold text-ember-50">ready when you are</h2>
+                                                    <p className="mt-2 text-sm font-semibold leading-6 text-ember-100/45">
+                                                        {left ? `${other} left the room.` : other ? 'add a youtube video to get started.' : 'waiting for someone to join.'}
+                                                    </p>
+                                                </div>
+                                                {other && !left && (
+                                                    <QueueBar
+                                                        show={false}
+                                                        setShow={() => { }}
+                                                        ytError={ytError}
+                                                        input={input}
+                                                        setInput={setInput}
+                                                        setYtError={setYtError}
+                                                        add={addYT}
+                                                        current={null}
+                                                        queue={queue}
+                                                        onReorder={reorderQueue}
+                                                        onScreenShare={toggleScreenShare}
+                                                        screenBusy={busy}
+                                                        inline
+                                                    />
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </section>
+                            </main>
+                        )}
+                    </>
                 )}
 
                 <SidePanel open={messagesOpen} width={320} side="right">

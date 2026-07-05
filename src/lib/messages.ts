@@ -10,6 +10,7 @@ export type Kind =
     | 'media-answer'
     | 'media-state'
     | 'typing'
+    | 'end'
 export interface Msg {
     kind: Kind
     payload: unknown
