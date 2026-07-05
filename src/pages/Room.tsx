@@ -412,6 +412,14 @@ const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCam, remo
     )
 }
 
+const TypingDots = () => (
+    <div className="flex items-center gap-1 rounded-[1.15rem] rounded-bl-[0.35rem] bg-cocoa-800 px-3.5 py-3 w-fit">
+        <span className="h-1.5 w-1.5 rounded-full bg-ember-100/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+        <span className="h-1.5 w-1.5 rounded-full bg-ember-100/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+        <span className="h-1.5 w-1.5 rounded-full bg-ember-100/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+    </div>
+)
+
 export const Room = ({ peer, name, leave, link }: Props) => {
     const [messages, setMessages] = useState<Message[]>([])
     const [queue, setQueue] = useState<Item[]>([])
@@ -440,6 +448,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const [micDevice, setMicDevice] = useState('')
     const [speakerDevice, setSpeakerDevice] = useState('')
     const [callDuration, setCallDuration] = useState(0)
+    const [otherTyping, setOtherTyping] = useState(false)
     const bottom = useRef<HTMLDivElement>(null)
     const player = useRef<PlayerHandle>(null)
 
@@ -473,6 +482,9 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const durationTimer = useRef<number | null>(null)
     const otherRef = useRef('')
     const reconnectingRef = useRef(false)
+    const typingTimer = useRef<number | null>(null)
+    const typingActive = useRef(false)
+    const remoteTypingTimer = useRef<number | null>(null)
 
     const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
         setToasts(prev => {
@@ -544,6 +556,14 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             setRemoteCam(!!state.camOn)
             setRemoteMic(!!state.micOn)
         }
+        if (msg.kind === 'typing') {
+            const state = msg.payload as { typing: boolean }
+            setOtherTyping(state.typing)
+            if (remoteTypingTimer.current) window.clearTimeout(remoteTypingTimer.current)
+            if (state.typing) {
+                remoteTypingTimer.current = window.setTimeout(() => setOtherTyping(false), 3000)
+            }
+        }
         if (msg.kind === 'name') {
             const incoming = (msg.payload as { name: string }).name
             setOther(prev => {
@@ -577,6 +597,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
         }
         const handleClose = () => {
             setLeft(true)
+            setOtherTyping(false)
             toast(`${otherRef.current || 'they'} disconnected`, 'error')
         }
         const handleNegotiationNeeded = () => { void negotiate() }
@@ -634,7 +655,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
 
     useEffect(() => {
         bottom.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [messages])
+    }, [messages, otherTyping])
 
     useEffect(() => {
         if (current) {
@@ -671,6 +692,8 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             if (timer.current) window.clearTimeout(timer.current)
             if (hoverTimer.current) window.clearTimeout(hoverTimer.current)
             if (durationTimer.current) window.clearInterval(durationTimer.current)
+            if (typingTimer.current) window.clearTimeout(typingTimer.current)
+            if (remoteTypingTimer.current) window.clearTimeout(remoteTypingTimer.current)
             localRef.current?.getTracks().forEach(t => t.stop())
             if (remoteAudio) { remoteAudio.srcObject = null }
         }
@@ -786,8 +809,32 @@ export const Room = ({ peer, name, leave, link }: Props) => {
         return () => window.removeEventListener('keydown', handleKey)
     })
 
+    const stopTyping = () => {
+        if (typingTimer.current) window.clearTimeout(typingTimer.current)
+        typingTimer.current = null
+        if (typingActive.current) {
+            typingActive.current = false
+            bc('typing', { typing: false })
+        }
+    }
+
+    const handleDraftChange = (v: string) => {
+        setDraft(v)
+        if (v.trim()) {
+            if (!typingActive.current) {
+                typingActive.current = true
+                bc('typing', { typing: true })
+            }
+            if (typingTimer.current) window.clearTimeout(typingTimer.current)
+            typingTimer.current = window.setTimeout(stopTyping, 2000)
+        } else {
+            stopTyping()
+        }
+    }
+
     const sendMsg = () => {
         if (!draft.trim()) return
+        stopTyping()
         const m: Message = { id: crypto.randomUUID(), sender: name, text: draft.trim(), stamp: Date.now() }
         setMessages(prev => [...prev, m])
         bc('chat', m)
@@ -1242,7 +1289,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                             </div>
                         )}
                         <div className="flex-1 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-h-0">
-                            {groups.length === 0 && (
+                            {groups.length === 0 && !otherTyping && (
                                 <div className="grid h-full place-items-center text-center text-sm font-semibold text-ember-100/35 py-8">
                                     <div className="space-y-2">
                                         <i className="fa-regular fa-comment text-2xl" />
@@ -1269,6 +1316,14 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                                         </div>
                                     </div>
                                 ))}
+                                {otherTyping && !left && (
+                                    <div className="flex items-end gap-2">
+                                        <div className="h-7 w-7 rounded-full grid place-items-center text-[0.6rem] font-bold text-white shrink-0 mb-0.5 bg-mint-300">
+                                            {av(other || '?')}
+                                        </div>
+                                        <TypingDots />
+                                    </div>
+                                )}
                             </div>
                             <div ref={bottom} />
                         </div>
@@ -1277,8 +1332,9 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                                 <input
                                     className="min-w-0 flex-1 bg-transparent px-1 text-sm font-semibold text-ember-50 placeholder:text-ember-100/30 focus:outline-none"
                                     value={draft}
-                                    onChange={e => setDraft(e.target.value)}
+                                    onChange={e => handleDraftChange(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && sendMsg()}
+                                    onBlur={stopTyping}
                                     placeholder={other && !left ? `message ${other}` : 'say something'}
                                 />
                                 <button
