@@ -14,7 +14,7 @@ interface SegmentationResults {
 interface SegmenterInstance {
     setOptions: (opts: { modelSelection: number }) => void
     onResults: (cb: (results: SegmentationResults) => void) => void
-    send: (input: { image: HTMLVideoElement }) => Promise<void>
+    send: (input: { image: HTMLVideoElement | HTMLCanvasElement }) => Promise<void>
     close: () => void
 }
 
@@ -89,16 +89,30 @@ const BACKGROUNDS: Background[] = [
     },
 ]
 
+const INFER_INTERVAL_MS = 66
+const INFER_WIDTH = 192
+const MASK_SMOOTHING_ALPHA = 0.55
+
 const useCutout = (stream: MediaStream | null) => {
     const videoRef = useRef<HTMLVideoElement | null>(null)
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
+    const smallCanvasRef = useRef<HTMLCanvasElement | null>(null)
+    const maskWorkCanvasRef = useRef<HTMLCanvasElement | null>(null)
+    const maskSmoothCanvasRef = useRef<HTMLCanvasElement | null>(null)
+    const maskSmoothInitRef = useRef(false)
     const segmenterRef = useRef<SegmenterInstance | null>(null)
     const rafRef = useRef<number>(0)
+    const vfcHandleRef = useRef<number | null>(null)
+    const lastSendRef = useRef(0)
+    const pendingRef = useRef(false)
     const [ready, setReady] = useState(false)
     const [failed, setFailed] = useState(false)
 
     if (!videoRef.current) videoRef.current = document.createElement('video')
     if (!canvasRef.current) canvasRef.current = document.createElement('canvas')
+    if (!smallCanvasRef.current) smallCanvasRef.current = document.createElement('canvas')
+    if (!maskWorkCanvasRef.current) maskWorkCanvasRef.current = document.createElement('canvas')
+    if (!maskSmoothCanvasRef.current) maskSmoothCanvasRef.current = document.createElement('canvas')
 
     useEffect(() => {
         const video = videoRef.current
@@ -111,6 +125,7 @@ const useCutout = (stream: MediaStream | null) => {
         } else {
             video.srcObject = null
             setReady(false)
+            maskSmoothInitRef.current = false
         }
     }, [stream])
 
@@ -123,29 +138,53 @@ const useCutout = (stream: MediaStream | null) => {
             const segmenter = new window.SelfieSegmentation({
                 locateFile: file => `${MODEL_BASE}/${file}`,
             })
-            segmenter.setOptions({ modelSelection: 1 })
+            segmenter.setOptions({ modelSelection: 0 })
             segmenter.onResults(results => {
+                pendingRef.current = false
                 const canvas = canvasRef.current
                 const video = videoRef.current
                 if (!canvas || !video || !video.videoWidth) return
-                canvas.width = video.videoWidth
-                canvas.height = video.videoHeight
+                if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                    canvas.width = video.videoWidth
+                    canvas.height = video.videoHeight
+                }
                 const ctx = canvas.getContext('2d')
                 if (!ctx) return
 
-                const maskCanvas = document.createElement('canvas')
-                maskCanvas.width = canvas.width
-                maskCanvas.height = canvas.height
-                const mctx = maskCanvas.getContext('2d')
-                if (!mctx) return
-                mctx.filter = 'blur(1px)'
-                mctx.drawImage(results.segmentationMask, 0, 0, canvas.width, canvas.height)
+                const workCanvas = maskWorkCanvasRef.current
+                const smoothCanvas = maskSmoothCanvasRef.current
+                if (!workCanvas || !smoothCanvas) return
+                if (workCanvas.width !== canvas.width || workCanvas.height !== canvas.height) {
+                    workCanvas.width = canvas.width
+                    workCanvas.height = canvas.height
+                }
+                if (smoothCanvas.width !== canvas.width || smoothCanvas.height !== canvas.height) {
+                    smoothCanvas.width = canvas.width
+                    smoothCanvas.height = canvas.height
+                    maskSmoothInitRef.current = false
+                }
+
+                const wctx = workCanvas.getContext('2d')
+                const sctx = smoothCanvas.getContext('2d')
+                if (!wctx || !sctx) return
+
+                wctx.clearRect(0, 0, workCanvas.width, workCanvas.height)
+                wctx.drawImage(results.segmentationMask, 0, 0, workCanvas.width, workCanvas.height)
+
+                if (!maskSmoothInitRef.current) {
+                    sctx.clearRect(0, 0, smoothCanvas.width, smoothCanvas.height)
+                    sctx.drawImage(workCanvas, 0, 0)
+                    maskSmoothInitRef.current = true
+                } else {
+                    sctx.globalAlpha = MASK_SMOOTHING_ALPHA
+                    sctx.drawImage(workCanvas, 0, 0)
+                    sctx.globalAlpha = 1
+                }
 
                 ctx.save()
                 ctx.clearRect(0, 0, canvas.width, canvas.height)
-                ctx.drawImage(maskCanvas, 0, 0)
+                ctx.drawImage(smoothCanvas, 0, 0)
                 ctx.globalCompositeOperation = 'source-in'
-                ctx.filter = 'none'
                 ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height)
                 ctx.restore()
 
@@ -153,15 +192,51 @@ const useCutout = (stream: MediaStream | null) => {
             })
             segmenterRef.current = segmenter
 
-            const loop = () => {
-                if (cancelled) return
+            const trySend = (now: number) => {
                 const video = videoRef.current
-                if (video && video.readyState >= 2) {
-                    void segmenter.send({ image: video })
+                const small = smallCanvasRef.current
+                if (!video || !small || video.readyState < 2 || !video.videoWidth) return
+                if (pendingRef.current) return
+                if (now - lastSendRef.current < INFER_INTERVAL_MS) return
+                lastSendRef.current = now
+
+                const scale = INFER_WIDTH / video.videoWidth
+                const w = INFER_WIDTH
+                const h = Math.round(video.videoHeight * scale)
+                if (small.width !== w || small.height !== h) {
+                    small.width = w
+                    small.height = h
                 }
-                rafRef.current = requestAnimationFrame(loop)
+                const sctx = small.getContext('2d')
+                if (!sctx) return
+                sctx.drawImage(video, 0, 0, w, h)
+
+                pendingRef.current = true
+                void segmenter.send({ image: small }).catch(() => {
+                    pendingRef.current = false
+                })
             }
-            loop()
+
+            const supportsVfc = typeof (videoRef.current as unknown as { requestVideoFrameCallback?: unknown }).requestVideoFrameCallback === 'function'
+
+            if (supportsVfc) {
+                const vfcLoop = () => {
+                    if (cancelled) return
+                    trySend(performance.now())
+                    const video = videoRef.current as HTMLVideoElement & {
+                        requestVideoFrameCallback: (cb: () => void) => number
+                    }
+                    vfcHandleRef.current = video.requestVideoFrameCallback(vfcLoop)
+                }
+                vfcLoop()
+            } else {
+                const rafLoop = () => {
+                    if (cancelled) return
+                    trySend(performance.now())
+                    rafRef.current = requestAnimationFrame(rafLoop)
+                }
+                rafLoop()
+            }
         }).catch(() => {
             if (!cancelled) setFailed(true)
         })
@@ -169,8 +244,17 @@ const useCutout = (stream: MediaStream | null) => {
         return () => {
             cancelled = true
             cancelAnimationFrame(rafRef.current)
+            if (vfcHandleRef.current !== null) {
+                const video = videoRef.current as unknown as {
+                    cancelVideoFrameCallback?: (handle: number) => void
+                }
+                video.cancelVideoFrameCallback?.(vfcHandleRef.current)
+                vfcHandleRef.current = null
+            }
             segmenterRef.current?.close()
             segmenterRef.current = null
+            pendingRef.current = false
+            maskSmoothInitRef.current = false
         }
     }, [stream])
 
@@ -225,9 +309,6 @@ export const Photobooth = ({ local, remote, otherName, onLeave, hovered, onReque
     ) => {
         const canvas = cutout.canvasRef.current
         if (!canvas || !canvas.width || !canvas.height) return
-        // Fixed crop: always trim the top 22% of the raw frame (usually empty
-        // background above the head) and scale to a constant height. Never
-        // recomputed from content, so people never visibly resize frame to frame.
         const cropTop = canvas.height * 0.22
         const srcH = canvas.height - cropTop
         const srcW = canvas.width
@@ -237,7 +318,6 @@ export const Photobooth = ({ local, remote, otherName, onLeave, hovered, onReque
         const dx = slotX + (slotW - dw) / 2
         const dy = h - dh
 
-        // soft contact shadow so both people read as standing on one floor
         ctx.save()
         ctx.globalAlpha = 0.35
         ctx.fillStyle = '#000'

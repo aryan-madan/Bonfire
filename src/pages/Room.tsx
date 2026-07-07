@@ -11,7 +11,7 @@ import { type Burst, ReactionOverlay, ReactionPicker } from '../components/React
 import { Whiteboard, type Stroke } from '../components/Whiteboard'
 import { Photobooth } from '../components/Photobooth'
 import { StudyTogether, type StudyState, defaultStudyState, nextAfter } from '../components/Study'
-import { type ActivityKey, ActivityMenu, ActivityInfoModal, SpadesFrame } from '../components/Activities'
+import { type ActivityKey, ActivityMenu, ActivityInfoModal, SpadesFrame, RmoyFrame } from '../components/Activities'
 
 interface Message {
     id: string
@@ -114,6 +114,39 @@ const bubbleRadius = (mine: boolean, total: number, i: number): string => {
     if (i === 0) return 'rounded-[1.15rem] rounded-bl-[0.35rem]'
     if (i === total - 1) return 'rounded-[1.15rem] rounded-tl-[0.35rem]'
     return 'rounded-[1.15rem] rounded-l-[0.35rem]'
+}
+const RMOY_LINK = /https?:\/\/reminds-me-of-you\.vercel\.app\/s\/[a-zA-Z0-9]+/g
+
+const renderMessageText = (text: string, mine: boolean, senderName: string) => {
+    const parts = text.split(RMOY_LINK)
+    const matches = text.match(RMOY_LINK) ?? []
+    if (!matches.length) return text
+
+    const introText = mine ? 'you sent a song!' : `${senderName} sent you a song!`
+
+    const nodes: React.ReactNode[] = []
+    parts.forEach((part, i) => {
+        if (part) nodes.push(<span key={`t-${i}`}>{part}</span>)
+        if (matches[i]) {
+            nodes.push(<span key={`t-intro-${i}`}>{introText} </span>)
+            nodes.push(
+                <a
+                    key={`link-${i}`}
+                    href={matches[i]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold transition-colors ${mine
+                        ? 'bg-black/15 text-white hover:bg-black/25'
+                        : 'bg-ember-400/10 text-ember-50 hover:bg-ember-400/[0.18]'
+                        }`}
+                >
+                    <i className={`fa-solid fa-heart text-[0.7rem] ${mine ? 'text-white/70' : 'text-ember-400'}`} />
+                    reminds me of you
+                </a>
+            )
+        }
+    })
+    return nodes
 }
 
 const audioConstraints = (deviceId?: string): MediaTrackConstraints => ({
@@ -1048,17 +1081,17 @@ export const Room = ({ peer, name, leave }: Props) => {
                         <button
                             onClick={toggleMic}
                             title="Toggle mic (M)"
-                            className={`w-full rounded-full py-2 text-xs font-bold transition-colors ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
+                            className={`flex w-full items-center justify-center rounded-full py-2.5 text-sm transition-colors ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
                         >
-                            <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
+                            <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'} w-4 text-center`} />
                         </button>
                         <button
                             onClick={toggleCam}
                             disabled={screenSharing}
                             title="Toggle camera (V)"
-                            className={`w-full rounded-full py-2 text-xs font-bold transition-colors disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
+                            className={`flex w-full items-center justify-center rounded-full py-2.5 text-sm transition-colors disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
                         >
-                            <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
+                            <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'} w-4 text-center`} />
                         </button>
                     </div>
                     {(mics.length > 1 || speakers.length > 1) && (
@@ -1372,6 +1405,13 @@ export const Room = ({ peer, name, leave }: Props) => {
                                         />
                                     )}
 
+                                    {activity === 'rmoy' && (
+                                        <RmoyFrame
+                                            onLeave={leaveActivity}
+                                            hovered={videoHovered}
+                                        />
+                                    )}
+
                                     {activity === 'study' && (
                                         <StudyTogether
                                             state={study}
@@ -1532,14 +1572,14 @@ export const Room = ({ peer, name, leave }: Props) => {
                                         <div className={`h-7 w-7 rounded-full grid place-items-center text-[0.6rem] font-bold text-white shrink-0 mb-0.5 ${g.mine ? 'bg-ember-400' : 'bg-mint-300'}`}>
                                             {av(g.sender)}
                                         </div>
-                                        <div className={`flex max-w-[78%] flex-col gap-1 ${g.mine ? 'items-end' : 'items-start'}`}>
+                                        <div className={`flex max-w-[78%] min-w-0 flex-col gap-1 ${g.mine ? 'items-end' : 'items-start'}`}>
                                             {!g.mine && <span className="px-2 text-xs font-bold text-ember-100/35">{g.sender}</span>}
                                             {g.texts.map((t, i) => (
                                                 <span
                                                     key={i}
-                                                    className={`break-words px-3 py-2 text-sm font-semibold leading-5 ${g.mine ? 'bg-ember-400 text-white' : 'bg-cocoa-800 text-ember-50'} ${bubbleRadius(g.mine, g.texts.length, i)}`}
+                                                    className={`inline-block max-w-full break-all px-3 py-2 text-sm font-semibold leading-5 ${g.mine ? 'bg-ember-400 text-white' : 'bg-cocoa-800 text-ember-50'} ${bubbleRadius(g.mine, g.texts.length, i)}`}
                                                 >
-                                                    {t}
+                                                    {renderMessageText(t, g.mine, g.sender)}
                                                 </span>
                                             ))}
                                         </div>

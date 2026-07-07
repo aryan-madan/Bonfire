@@ -7,7 +7,7 @@ export interface Item {
     thumb?: string
 }
 
-export const QueueBar = ({ show, setShow, ytError, input, setInput, setYtError, add, current, queue, onReorder, onScreenShare, screenBusy, inline = false }: {
+export const QueueBar = ({ show, setShow, ytError, input, setInput, setYtError, add, current, queue, onReorder, inline = false }: {
     show: boolean
     setShow: (v: boolean | ((v: boolean) => boolean)) => void
     ytError: boolean
@@ -108,19 +108,6 @@ export const QueueBar = ({ show, setShow, ytError, input, setInput, setYtError, 
                         </button>
                     )}
                 </div>
-                <div className="flex items-center gap-2.5">
-                    <div className="h-px flex-1 bg-white/10" />
-                    <span className="text-[0.6rem] font-bold uppercase tracking-wider text-ember-100/30">or</span>
-                    <div className="h-px flex-1 bg-white/10" />
-                </div>
-                <button
-                    onClick={onScreenShare}
-                    disabled={screenBusy}
-                    className={`flex w-full items-center justify-center gap-1.5 rounded-full py-2.5 text-xs font-bold backdrop-blur transition-all disabled:opacity-40 ${inline ? 'bg-cocoa-800 text-ember-100/60 hover:bg-cocoa-700' : 'bg-cocoa-900/80 text-ember-100/60 hover:text-ember-50'}`}
-                >
-                    <i className="fa-solid fa-desktop" />
-                    share your screen
-                </button>
             </div>
         </div>
     )

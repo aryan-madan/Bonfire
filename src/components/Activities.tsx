@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 
-export type ActivityKey = 'youtube' | 'screenshare' | 'spades' | 'whiteboard' | 'photobooth' | 'study'
+export type ActivityKey = 'youtube' | 'screenshare' | 'spades' | 'whiteboard' | 'photobooth' | 'study' | 'rmoy'
 
 export interface ActivityMeta {
     key: ActivityKey
@@ -52,7 +52,14 @@ export const ACTIVITIES: ActivityMeta[] = [
         icon: 'fa-solid fa-book',
         blurb: 'Study together using a synced pomodoro.',
         disclaimer: "Both of you can start a study session, and the timer will stay in sync. You can also take breaks together.",
-    }
+    },
+    {
+        key: 'rmoy',
+        label: 'Reminds Me of You',
+        icon: 'fa-solid fa-heart',
+        blurb: 'Send them a song that reminds you of them.',
+        disclaimer: "This opens Reminds Me of You, where you can pick a song and send it to them. The song will open in a new tab for them, and they'll be able to listen to it while still in the room. Send them a song link through chat.",
+    },
 ]
 
 export const ActivityMenu = ({ onPick }: { onPick: (key: ActivityKey) => void }) => (
@@ -139,6 +146,7 @@ export const ActivityInfoModal = ({ activityKey, onCancel, onConfirm }: {
 }
 
 const BASE_SPADES_URL = 'https://spadesofstreaming.vercel.app'
+const BASE_RMOY_URL = 'https://reminds-me-of-you.vercel.app/'
 
 export const SpadesFrame = ({ onLeave, hovered }: {
     onLeave: () => void
@@ -148,6 +156,31 @@ export const SpadesFrame = ({ onLeave, hovered }: {
         <div className="relative h-full w-full">
             <iframe
                 src={BASE_SPADES_URL}
+                className="h-full w-full border-0"
+                allow="autoplay; fullscreen; picture-in-picture; clipboard-write"
+                allowFullScreen
+            />
+            <div className={`absolute top-3 left-3 transition-all duration-300 ${hovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-1 pointer-events-none'}`}>
+                <button
+                    onClick={onLeave}
+                    title="back to activities"
+                    className="flex items-center justify-center h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white/90 hover:bg-black/60 transition-colors"
+                >
+                    <i className="fa-solid fa-arrow-left text-xs" />
+                </button>
+            </div>
+        </div>
+    )
+}
+
+export const RmoyFrame = ({ onLeave, hovered }: {
+    onLeave: () => void
+    hovered: boolean
+}) => {
+    return (
+        <div className="relative h-full w-full">
+            <iframe
+                src={BASE_RMOY_URL}
                 className="h-full w-full border-0"
                 allow="autoplay; fullscreen; picture-in-picture"
                 allowFullScreen

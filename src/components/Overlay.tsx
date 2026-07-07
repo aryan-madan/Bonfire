@@ -145,14 +145,14 @@ export const TileContextMenu = ({ menu, remoteName, remoteVolume, remoteMuted, r
         >
             {menu.target === 'remote' ? (
                 <>
-                    <div className="px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-ember-100/30 truncate">
+                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-ember-100/30 truncate">
                         {remoteName || 'this user'}
                     </div>
-                    {[100, 150, 200].map(v => (
+                    {[100, 150, 200, 300].map(v => (
                         <button
                             key={v}
                             onClick={() => { onSetVolume(v); onClose() }}
-                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-colors ${remoteVolume === v && !remoteMuted ? 'bg-cocoa-800 text-ember-50' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[12px] font-bold transition-colors ${remoteVolume === v && !remoteMuted ? 'bg-cocoa-800 text-ember-50' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
                         >
                             <span>
                                 <i className="fa-solid fa-volume-high mr-2 text-[0.6rem]" />
@@ -164,14 +164,14 @@ export const TileContextMenu = ({ menu, remoteName, remoteVolume, remoteMuted, r
                     <div className="my-1 h-px bg-white/[0.06]" />
                     <button
                         onClick={() => { onToggleMute(); onClose() }}
-                        className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${remoteMuted ? 'bg-berry-300/15 text-berry-300' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                        className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[12px] font-bold transition-colors ${remoteMuted ? 'bg-berry-300/15 text-berry-300' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
                     >
                         <i className={`fa-solid ${remoteMuted ? 'fa-volume-off' : 'fa-volume-slash'} w-4 shrink-0 text-center text-[0.65rem]`} />
                         {remoteMuted ? 'unmute for me' : 'mute for me'}
                     </button>
                     <button
                         onClick={() => { onToggleHideRemote(); onClose() }}
-                        className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${remoteHidden ? 'bg-berry-300/15 text-berry-300' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                        className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[12px] font-bold transition-colors ${remoteHidden ? 'bg-berry-300/15 text-berry-300' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
                     >
                         <i className={`fa-solid ${remoteHidden ? 'fa-eye' : 'fa-eye-slash'} w-4 shrink-0 text-center text-[0.65rem]`} />
                         {remoteHidden ? 'show their video' : 'hide their video'}

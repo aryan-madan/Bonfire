@@ -36,17 +36,27 @@ export const DeviceDropdown = ({ icon, value, options, fallback, onChange, disab
     disabled?: boolean
 }) => {
     const [open, setOpen] = useState(false)
-    const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+    const [pos, setPos] = useState({ top: 0, left: 0, width: 0, flip: false })
     const btnRef = useRef<HTMLButtonElement>(null)
     const menuRef = useRef<HTMLDivElement>(null)
-
     const selected = options.find(d => d.deviceId === value)
     const label = selected ? (selected.label || fallback) : fallback
+
+    const MENU_MAX_HEIGHT = 224 // matches max-h-56
 
     const openMenu = () => {
         if (disabled) return
         const rect = btnRef.current?.getBoundingClientRect()
-        if (rect) setPos({ top: rect.bottom + 6, left: rect.left, width: rect.width })
+        if (rect) {
+            const spaceBelow = window.innerHeight - rect.bottom
+            const flip = spaceBelow < MENU_MAX_HEIGHT + 12 && rect.top > spaceBelow
+            setPos({
+                top: flip ? rect.top - 6 : rect.bottom + 6,
+                left: rect.left,
+                width: rect.width,
+                flip,
+            })
+        }
         setOpen(true)
     }
 
@@ -83,7 +93,7 @@ export const DeviceDropdown = ({ icon, value, options, fallback, onChange, disab
                 type="button"
                 onClick={() => (open ? setOpen(false) : openMenu())}
                 disabled={disabled}
-                className={`flex w-full items-center gap-2 rounded-xl bg-cocoa-800 px-2.5 py-1.5 text-left transition-colors disabled:opacity-50 ${open ? 'ring-1 ring-ember-400/40' : 'ring-1 ring-ember-100/5 hover:bg-cocoa-700'}`}
+                className={`flex w-full items-center gap-2 rounded-xl bg-cocoa-800 px-2.5 py-1.5 text-left ring-1 ring-ember-100/5 transition-colors disabled:opacity-50 ${open ? 'bg-cocoa-700' : 'hover:bg-cocoa-700'}`}
             >
                 <i className={`${icon} w-3 text-center text-[0.6rem] text-ember-100/35`} />
                 <span className="min-w-0 flex-1 truncate text-xs font-bold text-ember-100/70">{label}</span>
@@ -92,7 +102,13 @@ export const DeviceDropdown = ({ icon, value, options, fallback, onChange, disab
             {open && createPortal(
                 <div
                     ref={menuRef}
-                    style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
+                    style={{
+                        position: 'fixed',
+                        top: pos.flip ? undefined : pos.top,
+                        bottom: pos.flip ? window.innerHeight - pos.top : undefined,
+                        left: pos.left,
+                        width: pos.width,
+                    }}
                     className="z-[9999] max-h-56 overflow-y-auto rounded-2xl bg-plum-900 p-1.5 shadow-2xl ring-1 ring-white/[0.08] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
                     <button
@@ -106,7 +122,7 @@ export const DeviceDropdown = ({ icon, value, options, fallback, onChange, disab
                         <button
                             key={device.deviceId}
                             onClick={() => select(device.deviceId)}
-                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-colors ${value === device.deviceId ? 'bg-cocoa-800 text-ember-50' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[12px] font-bold transition-colors ${value === device.deviceId ? 'bg-cocoa-800 text-ember-50' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
                         >
                             <span className="truncate">{device.label || fallback}</span>
                             {value === device.deviceId && <i className="fa-solid fa-check text-[0.6rem] shrink-0" />}
