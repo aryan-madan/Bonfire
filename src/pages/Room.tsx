@@ -9,6 +9,8 @@ import { type ContextTarget, type ContextMenuState, EndRoomModal, EndedScreen, T
 import { NavBtn, DeviceDropdown, TypingDots } from '../components/Controls'
 import { type Burst, ReactionOverlay, ReactionPicker } from '../components/Reaction'
 import { Whiteboard, type Stroke } from '../components/Whiteboard'
+import { Photobooth } from '../components/Photobooth'
+import { StudyTogether, type StudyState, defaultStudyState, nextAfter } from '../components/Study'
 import { type ActivityKey, ActivityMenu, ActivityInfoModal, SpadesFrame } from '../components/Activities'
 
 interface Message {
@@ -163,7 +165,7 @@ const SidePanel = ({ open, width, side, children }: {
     </div>
 )
 
-export const Room = ({ peer, name, leave, link }: Props) => {
+export const Room = ({ peer, name, leave }: Props) => {
     const [messages, setMessages] = useState<Message[]>([])
     const [queue, setQueue] = useState<Item[]>([])
     const [current, setCurrent] = useState<Item | null>(null)
@@ -187,7 +189,8 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const [screenPreview, setScreenPreview] = useState<MediaStream | null>(null)
     const [busy, setBusy] = useState(false)
     const [toasts, setToasts] = useState<Toast[]>([])
-    const [linkCopied, setLinkCopied] = useState(false)
+    //const [linkCopied, setLinkCopied] = useState(false)
+    const [study, setStudy] = useState<StudyState>(defaultStudyState)
     const [videoHovered, setVideoHovered] = useState(false)
     const [callOpen, setCallOpen] = useState(true)
     const [messagesOpen, setMessagesOpen] = useState(true)
@@ -210,6 +213,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const bottom = useRef<HTMLDivElement>(null)
     const player = useRef<PlayerHandle>(null)
     const [strokes, setStrokes] = useState<Stroke[]>([])
+    const [photoboothTrigger, setPhotoboothTrigger] = useState(0)
 
     const localVidEls = useRef<Set<HTMLVideoElement>>(new Set())
     const remoteVidEls = useRef<Set<HTMLVideoElement>>(new Set())
@@ -435,6 +439,10 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             })
         }
         if (msg.kind === 'whiteboard-clear') setStrokes([])
+        if (msg.kind === 'photobooth-capture') {
+            setPhotoboothTrigger(n => n + 1)
+        }
+        if (msg.kind === 'study-state') setStudy(msg.payload as StudyState)
         if (msg.kind === 'name') {
             const incoming = (msg.payload as { name: string }).name
             setOther(prev => {
@@ -615,6 +623,19 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     useEffect(() => {
         screenVidEls.current.forEach(el => { el.srcObject = screenPreview })
     }, [screenPreview])
+
+    useEffect(() => {
+        if (!study.running || !study.endsAt) return
+        const id = window.setInterval(() => {
+            setStudy(prev => {
+                if (!prev.running || !prev.endsAt || Date.now() < prev.endsAt) return prev
+                const next = nextAfter(prev)
+                bc('study-state', next)
+                return next
+            })
+        }, 1000)
+        return () => window.clearInterval(id)
+    }, [study.running, study.endsAt, bc])
 
     useEffect(() => {
         const audio = remoteAudioEl.current as SinkAudio | null
@@ -909,13 +930,13 @@ export const Room = ({ peer, name, leave, link }: Props) => {
         setActivityOpen(v => !v)
     }
 
-    const copyLink = () => {
+    {/* const copyLink = () => {
         void navigator.clipboard.writeText(link).then(() => {
             setLinkCopied(true)
             toast('Link copied', 'success')
             setTimeout(() => setLinkCopied(false), 1800)
         })
-    }
+    } */}
 
     const requestEnd = () => {
         setConfirmEnd(true)
@@ -952,6 +973,11 @@ export const Room = ({ peer, name, leave, link }: Props) => {
         bc('whiteboard-stroke', stroke)
     }
 
+    const updateStudy = useCallback((next: StudyState) => {
+        setStudy(next)
+        bc('study-state', next)
+    }, [bc])
+
     const clearBoard = () => {
         setStrokes([])
         bc('whiteboard-clear', null)
@@ -985,6 +1011,10 @@ export const Room = ({ peer, name, leave, link }: Props) => {
         if (screenSharing) void stopScreenShare()
         setActivity('none')
         bc('activity', { activity: 'none' })
+    }
+
+    const requestPhotoboothCapture = () => {
+        bc('photobooth-capture', null)
     }
 
     const groups = toGroups(messages, name)
@@ -1339,6 +1369,27 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                                         <SpadesFrame
                                             onLeave={leaveActivity}
                                             hovered={videoHovered}
+                                        />
+                                    )}
+
+                                    {activity === 'study' && (
+                                        <StudyTogether
+                                            state={study}
+                                            onChange={updateStudy}
+                                            onLeave={leaveActivity}
+                                            hovered={videoHovered}
+                                        />
+                                    )}
+
+                                    {activity === 'photobooth' && (
+                                        <Photobooth
+                                            local={local}
+                                            remote={remote}
+                                            otherName={other}
+                                            onLeave={leaveActivity}
+                                            hovered={videoHovered}
+                                            onRequestCapture={requestPhotoboothCapture}
+                                            remoteTrigger={photoboothTrigger}
                                         />
                                     )}
 

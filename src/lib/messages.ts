@@ -16,6 +16,8 @@ export type Kind =
     | 'activity'
     | 'whiteboard-stroke'
     | 'whiteboard-clear'
+    | 'photobooth-capture'
+    | 'study-state'
 
 export interface Msg {
     kind: Kind

@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 
-export type ActivityKey = 'youtube' | 'screenshare' | 'spades' | 'whiteboard'
+export type ActivityKey = 'youtube' | 'screenshare' | 'spades' | 'whiteboard' | 'photobooth' | 'study'
 
 export interface ActivityMeta {
     key: ActivityKey
@@ -39,6 +39,20 @@ export const ACTIVITIES: ActivityMeta[] = [
         blurb: 'Doodle and sketch together in real time.',
         disclaimer: "Everyone's strokes are shared live and stay on the board for the rest of the call. You can export it as an image any time.",
     },
+    {
+        key: 'photobooth',
+        label: 'Photobooth',
+        icon: 'fa-solid fa-camera-retro',
+        blurb: 'Cut yourselves out and drop into the same background.',
+        disclaimer: "Both cameras need to be on. Background removal runs on your own device — nothing extra is sent over the connection. You can pick a backdrop and save a photo together.",
+    },
+    {
+        key: 'study',
+        label: 'Study',
+        icon: 'fa-solid fa-book',
+        blurb: 'Study together using a synced pomodoro.',
+        disclaimer: "Both of you can start a study session, and the timer will stay in sync. You can also take breaks together.",
+    }
 ]
 
 export const ActivityMenu = ({ onPick }: { onPick: (key: ActivityKey) => void }) => (
