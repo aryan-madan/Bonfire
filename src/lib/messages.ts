@@ -14,6 +14,8 @@ export type Kind =
     | 'message'
     | 'reaction'
     | 'activity'
+    | 'whiteboard-stroke'
+    | 'whiteboard-clear'
 
 export interface Msg {
     kind: Kind

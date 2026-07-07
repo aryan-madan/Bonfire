@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 
-export type ActivityKey = 'youtube' | 'screenshare' | 'spades'
+export type ActivityKey = 'youtube' | 'screenshare' | 'spades' | 'whiteboard'
 
 export interface ActivityMeta {
     key: ActivityKey
@@ -31,6 +31,13 @@ export const ACTIVITIES: ActivityMeta[] = [
         icon: 'fa-solid fa-film',
         blurb: 'Browse and watch movies together on Spades of Streaming.',
         disclaimer: "This opens Spades, where you can watch movies inside the room. Playback isn't synced, so you'll each need to navigate to what you want to watch.",
+    },
+    {
+        key: 'whiteboard',
+        label: 'Whiteboard',
+        icon: 'fa-solid fa-pen-nib',
+        blurb: 'Doodle and sketch together in real time.',
+        disclaimer: "Everyone's strokes are shared live and stay on the board for the rest of the call. You can export it as an image any time.",
     },
 ]
 

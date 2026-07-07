@@ -8,6 +8,7 @@ import { av, VideoTile, ScreenStage } from '../components/Video'
 import { type ContextTarget, type ContextMenuState, EndRoomModal, EndedScreen, TileContextMenu } from '../components/Overlay'
 import { NavBtn, DeviceDropdown, TypingDots } from '../components/Controls'
 import { type Burst, ReactionOverlay, ReactionPicker } from '../components/Reaction'
+import { Whiteboard, type Stroke } from '../components/Whiteboard'
 import { type ActivityKey, ActivityMenu, ActivityInfoModal, SpadesFrame } from '../components/Activities'
 
 interface Message {
@@ -208,6 +209,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const [bursts, setBursts] = useState<Burst[]>([])
     const bottom = useRef<HTMLDivElement>(null)
     const player = useRef<PlayerHandle>(null)
+    const [strokes, setStrokes] = useState<Stroke[]>([])
 
     const localVidEls = useRef<Set<HTMLVideoElement>>(new Set())
     const remoteVidEls = useRef<Set<HTMLVideoElement>>(new Set())
@@ -422,6 +424,17 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             setRemoteScreenSharing(false)
             setRoomEnded(true)
         }
+        if (msg.kind === 'whiteboard-stroke') {
+            const stroke = msg.payload as Stroke
+            setStrokes(prev => {
+                const idx = prev.findIndex(s => s.id === stroke.id)
+                if (idx === -1) return [...prev, stroke]
+                const next = [...prev]
+                next[idx] = stroke
+                return next
+            })
+        }
+        if (msg.kind === 'whiteboard-clear') setStrokes([])
         if (msg.kind === 'name') {
             const incoming = (msg.payload as { name: string }).name
             setOther(prev => {
@@ -928,6 +941,21 @@ export const Room = ({ peer, name, leave, link }: Props) => {
         setBursts(prev => [...prev, { id: crypto.randomUUID(), emoji }])
         bc('reaction', { emoji })
     }
+    const updateStroke = (stroke: Stroke) => {
+        setStrokes(prev => {
+            const idx = prev.findIndex(s => s.id === stroke.id)
+            if (idx === -1) return [...prev, stroke]
+            const next = [...prev]
+            next[idx] = stroke
+            return next
+        })
+        bc('whiteboard-stroke', stroke)
+    }
+
+    const clearBoard = () => {
+        setStrokes([])
+        bc('whiteboard-clear', null)
+    }
 
     const removeBurst = (id: string) => {
         setBursts(prev => prev.filter(b => b.id !== id))
@@ -1052,7 +1080,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                     )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                    {link && (
+                    {/* {link && (
                         <button
                             onClick={copyLink}
                             title="Copy room link"
@@ -1061,7 +1089,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                             <i className={`fa-solid ${linkCopied ? 'fa-check' : 'fa-link'} text-[0.6rem]`} />
                             <span>{linkCopied ? 'copied' : 'copy link'}</span>
                         </button>
-                    )}
+                    )} */}
                     <ReactionPicker onPick={fireReaction} />
                     <NavBtn
                         active={callOpen}
@@ -1309,6 +1337,17 @@ export const Room = ({ peer, name, leave, link }: Props) => {
 
                                     {activity === 'spades' && (
                                         <SpadesFrame
+                                            onLeave={leaveActivity}
+                                            hovered={videoHovered}
+                                        />
+                                    )}
+
+                                    {activity === 'whiteboard' && (
+                                        <Whiteboard
+                                            strokes={strokes}
+                                            onStrokeUpdate={updateStroke}
+                                            onStrokeEnd={updateStroke}
+                                            onClear={clearBoard}
                                             onLeave={leaveActivity}
                                             hovered={videoHovered}
                                         />
