@@ -7,6 +7,8 @@ import { type Item, QueueBar } from '../components/Queue'
 import { av, VideoTile, ScreenStage } from '../components/Video'
 import { type ContextTarget, type ContextMenuState, EndRoomModal, EndedScreen, TileContextMenu } from '../components/Overlay'
 import { NavBtn, DeviceDropdown, TypingDots } from '../components/Controls'
+import { type Burst, ReactionOverlay, ReactionPicker } from '../components/Reaction'
+import { type ActivityKey, ActivityMenu, ActivityInfoModal, SpadesFrame } from '../components/Activities'
 
 interface Message {
     id: string
@@ -167,6 +169,9 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const [draft, setDraft] = useState('')
     const [input, setInput] = useState('')
     const [ytError, setYtError] = useState(false)
+    const [activityOpen, setActivityOpen] = useState(true)
+    const [activity, setActivity] = useState<ActivityKey | 'none'>('none')
+    const [pendingActivity, setPendingActivity] = useState<ActivityKey | null>(null)
     const [showQueue, setShowQueue] = useState(false)
     const [other, setOther] = useState('')
     const [left, setLeft] = useState(false)
@@ -183,7 +188,6 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const [toasts, setToasts] = useState<Toast[]>([])
     const [linkCopied, setLinkCopied] = useState(false)
     const [videoHovered, setVideoHovered] = useState(false)
-    const [watchOpen, setWatchOpen] = useState(true)
     const [callOpen, setCallOpen] = useState(true)
     const [messagesOpen, setMessagesOpen] = useState(true)
     const [mics, setMics] = useState<MediaDeviceInfo[]>([])
@@ -201,6 +205,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const [localVideoHidden, setLocalVideoHidden] = useState(false)
     const [localSpeaking, setLocalSpeaking] = useState(false)
     const [remoteSpeaking, setRemoteSpeaking] = useState(false)
+    const [bursts, setBursts] = useState<Burst[]>([])
     const bottom = useRef<HTMLDivElement>(null)
     const player = useRef<PlayerHandle>(null)
 
@@ -395,6 +400,10 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             setRemoteMic(!!state.micOn)
             if (state.screenOn !== undefined) setRemoteScreenSharing(state.screenOn)
         }
+        if (msg.kind === 'activity') {
+            const state = msg.payload as { activity: ActivityKey | 'none' }
+            setActivity(state.activity)
+        }
         if (msg.kind === 'typing') {
             const state = msg.payload as { typing: boolean }
             setOtherTyping(state.typing)
@@ -402,6 +411,10 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             if (state.typing) {
                 remoteTypingTimer.current = window.setTimeout(() => setOtherTyping(false), 3000)
             }
+        }
+        if (msg.kind === 'reaction') {
+            const { emoji } = msg.payload as { emoji: string }
+            setBursts(prev => [...prev, { id: crypto.randomUUID(), emoji }])
         }
         if (msg.kind === 'end') {
             endedRef.current = true
@@ -717,13 +730,14 @@ export const Room = ({ peer, name, leave, link }: Props) => {
         bc('media-state', { micOn: mic, camOn: next })
     }
 
-    const startScreenShare = async () => {
-        if (busy || screenSharing) return
+    const startScreenShare = async (): Promise<boolean> => {
+        if (busy) return false
+        if (screenSharing) return true
         setBusy(true)
         try {
             const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
             const screenTrack = display.getVideoTracks()[0]
-            if (!screenTrack) return
+            if (!screenTrack) return false
             screenTrack.contentHint = 'detail'
             wasCamOnBeforeShare.current = cam
             const sender = peer.conn.getSenders().find(s => s.track?.kind === 'video')
@@ -741,8 +755,10 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             setScreenPreview(display)
             bc('media-state', { micOn: mic, camOn: false, screenOn: true })
             screenTrack.onended = () => { void stopScreenShare() }
+            return true
         } catch {
             toast('screen share was blocked or cancelled', 'error')
+            return false
         } finally {
             setBusy(false)
         }
@@ -765,6 +781,8 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             setCam(wasCamOnBeforeShare.current)
             setScreenSharing(false)
             bc('media-state', { micOn: mic, camOn: wasCamOnBeforeShare.current, screenOn: false })
+            setActivity('none')
+            bc('activity', { activity: 'none' })
         } finally {
             setBusy(false)
         }
@@ -869,13 +887,13 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     }
 
     const toggleCall = () => {
-        if (callOpen && !watchOpen) return
+        if (callOpen && !activityOpen) return
         setCallOpen(v => !v)
     }
 
-    const toggleWatch = () => {
-        if (watchOpen && !callOpen) return
-        setWatchOpen(v => !v)
+    const toggleActivity = () => {
+        if (activityOpen && !callOpen) return
+        setActivityOpen(v => !v)
     }
 
     const copyLink = () => {
@@ -904,6 +922,41 @@ export const Room = ({ peer, name, leave, link }: Props) => {
     const openContextMenu = (e: React.MouseEvent, target: ContextTarget) => {
         e.preventDefault()
         setContextMenu({ x: e.clientX, y: e.clientY, target })
+    }
+
+    const fireReaction = (emoji: string) => {
+        setBursts(prev => [...prev, { id: crypto.randomUUID(), emoji }])
+        bc('reaction', { emoji })
+    }
+
+    const removeBurst = (id: string) => {
+        setBursts(prev => prev.filter(b => b.id !== id))
+    }
+
+    const pickActivity = (key: ActivityKey) => {
+        setPendingActivity(key)
+    }
+
+    const confirmActivity = async () => {
+        if (!pendingActivity) return
+        const key = pendingActivity
+        setPendingActivity(null)
+        if (key === 'screenshare') {
+            const started = await startScreenShare()
+            if (!started) return
+        }
+        setActivity(key)
+        bc('activity', { activity: key })
+    }
+
+    const cancelActivity = () => {
+        setPendingActivity(null)
+    }
+
+    const leaveActivity = () => {
+        if (screenSharing) void stopScreenShare()
+        setActivity('none')
+        bc('activity', { activity: 'none' })
     }
 
     const groups = toGroups(messages, name)
@@ -985,6 +1038,8 @@ export const Room = ({ peer, name, leave, link }: Props) => {
             <audio ref={pumpAudioEl} autoPlay muted playsInline className="hidden" />
 
             <ToastStack toasts={toasts} />
+            <ReactionOverlay bursts={bursts} onDone={removeBurst} />
+            <ActivityInfoModal activityKey={pendingActivity} onCancel={cancelActivity} onConfirm={confirmActivity} />
 
             <header className="flex items-center gap-2 px-3 pt-3 pb-0 shrink-0 h-14">
                 <div className="flex items-center gap-2.5 flex-1 min-w-0">
@@ -1007,21 +1062,22 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                             <span>{linkCopied ? 'copied' : 'copy link'}</span>
                         </button>
                     )}
+                    <ReactionPicker onPick={fireReaction} />
                     <NavBtn
                         active={callOpen}
                         onClick={toggleCall}
                         icon="fa-solid fa-users"
                         label="call"
                         dot={(local || remote) ? 'mint' : undefined}
-                        disabled={callOpen && !watchOpen}
+                        disabled={callOpen && !activityOpen}
                     />
                     <NavBtn
-                        active={watchOpen}
-                        onClick={toggleWatch}
-                        icon="fa-brands fa-youtube"
-                        label="watch"
-                        dot={current ? 'ember' : undefined}
-                        disabled={watchOpen && !callOpen}
+                        active={activityOpen}
+                        onClick={toggleActivity}
+                        icon="fa-solid fa-clapperboard"
+                        label="activity"
+                        dot={activity !== 'none' ? 'ember' : undefined}
+                        disabled={activityOpen && !callOpen}
                     />
                     <NavBtn
                         active={messagesOpen}
@@ -1061,7 +1117,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
 
             <div className="flex flex-1 gap-3 p-3 min-h-0">
 
-                <SidePanel open={callOpen && watchOpen} width={300} side="left">
+                <SidePanel open={callOpen && activityOpen} width={300} side="left">
                     <div className="w-full rounded-[1.5rem] bg-plum-900 overflow-hidden flex flex-col flex-1 min-h-0">
                         <div className="px-4 pt-3 pb-1 shrink-0">
                             <span className="text-xs font-bold text-ember-50">call</span>
@@ -1124,7 +1180,7 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                     <>
                         <div
                             className="flex-1 flex flex-col self-stretch min-w-0 min-h-0 gap-3"
-                            style={{ display: !watchOpen && callOpen ? 'flex' : 'none' }}
+                            style={{ display: !activityOpen && callOpen ? 'flex' : 'none' }}
                         >
                             <style>{`
                                 @keyframes callExpand {
@@ -1242,60 +1298,78 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                             </div>
                         </div>
 
-                        {watchOpen && (
+                        {activityOpen && (
                             <main className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
                                 <section
                                     className="relative flex-1 rounded-[1.75rem] overflow-hidden bg-cocoa-800 min-h-0"
                                     onMouseEnter={handleVideoMouseEnter}
                                     onMouseLeave={handleVideoMouseLeave}
                                 >
-                                    <div className={current ? 'contents' : 'hidden'}>
-                                        <Player
-                                            url={current?.url ?? ''}
-                                            ref={player}
-                                            onPlay={() => bc('play', null)}
-                                            onPause={() => bc('pause', null)}
-                                            onSeek={t => bc('seek', t)}
-                                        />
-                                        <div
-                                            className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${videoHovered ? 'opacity-100' : 'opacity-0'}`}
-                                            style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 18%, transparent 72%, rgba(0,0,0,0.7) 100%)' }}
-                                        />
-                                        <div className={`absolute top-3 right-3 flex items-center gap-2 transition-all duration-300 ${videoHovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-1 pointer-events-none'}`}>
-                                            <button
-                                                onClick={skip}
-                                                className="flex items-center gap-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 px-4 py-2 text-xs font-bold text-white/90 hover:bg-black/60 transition-colors"
-                                            >
-                                                <i className="fa-solid fa-forward-step" />
-                                                skip
-                                            </button>
-                                            <button
-                                                onClick={stop}
-                                                className="flex items-center gap-1.5 rounded-full bg-berry-300/20 backdrop-blur-md border border-berry-300/20 px-4 py-2 text-xs font-bold text-berry-300 hover:bg-berry-300/35 transition-colors"
-                                            >
-                                                <i className="fa-solid fa-stop" />
-                                                stop
-                                            </button>
-                                        </div>
-                                        <div className={`absolute bottom-0 left-0 right-0 transition-all duration-300 ${videoHovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
-                                            <QueueBar
-                                                show={showQueue}
-                                                setShow={setShowQueue}
-                                                ytError={ytError}
-                                                input={input}
-                                                setInput={setInput}
-                                                setYtError={setYtError}
-                                                add={addYT}
-                                                current={current}
-                                                queue={queue}
-                                                onReorder={reorderQueue}
-                                                onScreenShare={toggleScreenShare}
-                                                screenBusy={busy}
-                                            />
-                                        </div>
-                                    </div>
+                                    {activity === 'none' && <ActivityMenu onPick={pickActivity} />}
 
-                                    {!current && (
+                                    {activity === 'spades' && (
+                                        <SpadesFrame
+                                            onLeave={leaveActivity}
+                                            hovered={videoHovered}
+                                        />
+                                    )}
+
+                                    {activity === 'youtube' && (
+                                        <div className={current ? 'contents' : 'hidden'}>
+                                            <Player
+                                                url={current?.url ?? ''}
+                                                ref={player}
+                                                onPlay={() => bc('play', null)}
+                                                onPause={() => bc('pause', null)}
+                                                onSeek={t => bc('seek', t)}
+                                            />
+                                            <div
+                                                className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${videoHovered ? 'opacity-100' : 'opacity-0'}`}
+                                                style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 18%, transparent 72%, rgba(0,0,0,0.7) 100%)' }}
+                                            />
+                                            <div className={`absolute top-3 right-3 flex items-center gap-2 transition-all duration-300 ${videoHovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-1 pointer-events-none'}`}>
+                                                <button
+                                                    onClick={leaveActivity}
+                                                    title="back to activities"
+                                                    className="flex items-center justify-center h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white/90 hover:bg-black/60 transition-colors"
+                                                >
+                                                    <i className="fa-solid fa-arrow-left text-xs" />
+                                                </button>
+                                                <button
+                                                    onClick={skip}
+                                                    className="flex items-center gap-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 px-4 py-2 text-xs font-bold text-white/90 hover:bg-black/60 transition-colors"
+                                                >
+                                                    <i className="fa-solid fa-forward-step" />
+                                                    skip
+                                                </button>
+                                                <button
+                                                    onClick={stop}
+                                                    className="flex items-center gap-1.5 rounded-full bg-berry-300/20 backdrop-blur-md border border-berry-300/20 px-4 py-2 text-xs font-bold text-berry-300 hover:bg-berry-300/35 transition-colors"
+                                                >
+                                                    <i className="fa-solid fa-stop" />
+                                                    stop
+                                                </button>
+                                            </div>
+                                            <div className={`absolute bottom-0 left-0 right-0 transition-all duration-300 ${videoHovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+                                                <QueueBar
+                                                    show={showQueue}
+                                                    setShow={setShowQueue}
+                                                    ytError={ytError}
+                                                    input={input}
+                                                    setInput={setInput}
+                                                    setYtError={setYtError}
+                                                    add={addYT}
+                                                    current={current}
+                                                    queue={queue}
+                                                    onReorder={reorderQueue}
+                                                    onScreenShare={() => setPendingActivity('screenshare')}
+                                                    screenBusy={busy}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activity === 'youtube' && !current && (
                                         <div className="grid h-full place-items-center px-6 text-center">
                                             <div className="max-w-sm space-y-5">
                                                 <div className="mx-auto grid h-20 w-15 place-items-center rounded-[1.5rem] text-3xl text-ember-400">
@@ -1319,11 +1393,18 @@ export const Room = ({ peer, name, leave, link }: Props) => {
                                                         current={null}
                                                         queue={queue}
                                                         onReorder={reorderQueue}
-                                                        onScreenShare={toggleScreenShare}
+                                                        onScreenShare={() => setPendingActivity('screenshare')}
                                                         screenBusy={busy}
                                                         inline
                                                     />
                                                 )}
+                                                <button
+                                                    onClick={leaveActivity}
+                                                    className="text-xs font-bold text-ember-100/40 hover:text-ember-100/70 transition-colors"
+                                                >
+                                                    <i className="fa-solid fa-arrow-left mr-1.5" />
+                                                    back to activities
+                                                </button>
                                             </div>
                                         </div>
                                     )}
