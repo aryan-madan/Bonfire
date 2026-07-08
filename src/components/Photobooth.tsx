@@ -51,9 +51,9 @@ const BACKGROUNDS: Background[] = [
             g.addColorStop(1, '#1c1310')
             ctx.fillStyle = g
             ctx.fillRect(0, 0, w, h)
-            ctx.fillStyle = 'rgba(244,161,93,0.12)'
+            ctx.fillStyle = 'rgba(244,161,93,0.14)'
             ctx.beginPath()
-            ctx.ellipse(w / 2, h * 0.95, w * 0.65, h * 0.35, 0, 0, Math.PI * 2)
+            ctx.ellipse(w / 2, h * 0.98, w * 0.75, h * 0.4, 0, 0, Math.PI * 2)
             ctx.fill()
         },
     },
@@ -66,9 +66,9 @@ const BACKGROUNDS: Background[] = [
             g.addColorStop(1, '#150f22')
             ctx.fillStyle = g
             ctx.fillRect(0, 0, w, h)
-            ctx.fillStyle = 'rgba(232,96,122,0.10)'
+            ctx.fillStyle = 'rgba(232,96,122,0.12)'
             ctx.beginPath()
-            ctx.ellipse(w * 0.3, h * 0.18, w * 0.35, w * 0.35, 0, 0, Math.PI * 2)
+            ctx.ellipse(w * 0.3, h * 0.18, w * 0.4, w * 0.4, 0, 0, Math.PI * 2)
             ctx.fill()
         },
     },
@@ -81,25 +81,28 @@ const BACKGROUNDS: Background[] = [
             g.addColorStop(1, '#0f1a17')
             ctx.fillStyle = g
             ctx.fillRect(0, 0, w, h)
-            ctx.fillStyle = 'rgba(125,216,176,0.10)'
+            ctx.fillStyle = 'rgba(125,216,176,0.12)'
             ctx.beginPath()
-            ctx.ellipse(w * 0.7, h * 0.15, w * 0.4, w * 0.4, 0, 0, Math.PI * 2)
+            ctx.ellipse(w * 0.7, h * 0.15, w * 0.45, w * 0.45, 0, 0, Math.PI * 2)
             ctx.fill()
         },
     },
 ]
 
-const INFER_INTERVAL_MS = 66
-const INFER_WIDTH = 192
-const MASK_SMOOTHING_ALPHA = 0.55
+const INFER_INTERVAL_MS = 45
+const INFER_WIDTH = 320
+const MASK_FEATHER_PX = 4
+const MASK_SMOOTHING = 0.45
+const MASK_LOW = 0.4
+const MASK_HIGH = 0.62
 
 const useCutout = (stream: MediaStream | null) => {
     const videoRef = useRef<HTMLVideoElement | null>(null)
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
     const smallCanvasRef = useRef<HTMLCanvasElement | null>(null)
-    const maskWorkCanvasRef = useRef<HTMLCanvasElement | null>(null)
-    const maskSmoothCanvasRef = useRef<HTMLCanvasElement | null>(null)
-    const maskSmoothInitRef = useRef(false)
+    const rawMaskCanvasRef = useRef<HTMLCanvasElement | null>(null)
+    const maskFeatherCanvasRef = useRef<HTMLCanvasElement | null>(null)
+    const smoothedMaskRef = useRef<Float32Array | null>(null)
     const segmenterRef = useRef<SegmenterInstance | null>(null)
     const rafRef = useRef<number>(0)
     const vfcHandleRef = useRef<number | null>(null)
@@ -111,8 +114,8 @@ const useCutout = (stream: MediaStream | null) => {
     if (!videoRef.current) videoRef.current = document.createElement('video')
     if (!canvasRef.current) canvasRef.current = document.createElement('canvas')
     if (!smallCanvasRef.current) smallCanvasRef.current = document.createElement('canvas')
-    if (!maskWorkCanvasRef.current) maskWorkCanvasRef.current = document.createElement('canvas')
-    if (!maskSmoothCanvasRef.current) maskSmoothCanvasRef.current = document.createElement('canvas')
+    if (!rawMaskCanvasRef.current) rawMaskCanvasRef.current = document.createElement('canvas')
+    if (!maskFeatherCanvasRef.current) maskFeatherCanvasRef.current = document.createElement('canvas')
 
     useEffect(() => {
         const video = videoRef.current
@@ -125,13 +128,13 @@ const useCutout = (stream: MediaStream | null) => {
         } else {
             video.srcObject = null
             setReady(false)
-            maskSmoothInitRef.current = false
         }
     }, [stream])
 
     useEffect(() => {
         if (!stream || !stream.getVideoTracks().length) return
         let cancelled = false
+        smoothedMaskRef.current = null
 
         void loadModelScript().then(() => {
             if (cancelled || !window.SelfieSegmentation) return
@@ -143,7 +146,10 @@ const useCutout = (stream: MediaStream | null) => {
                 pendingRef.current = false
                 const canvas = canvasRef.current
                 const video = videoRef.current
-                if (!canvas || !video || !video.videoWidth) return
+                const small = smallCanvasRef.current
+                const raw = rawMaskCanvasRef.current
+                const feather = maskFeatherCanvasRef.current
+                if (!canvas || !video || !video.videoWidth || !small || !small.width || !raw || !feather) return
                 if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
                     canvas.width = video.videoWidth
                     canvas.height = video.videoHeight
@@ -151,40 +157,58 @@ const useCutout = (stream: MediaStream | null) => {
                 const ctx = canvas.getContext('2d')
                 if (!ctx) return
 
-                const workCanvas = maskWorkCanvasRef.current
-                const smoothCanvas = maskSmoothCanvasRef.current
-                if (!workCanvas || !smoothCanvas) return
-                if (workCanvas.width !== canvas.width || workCanvas.height !== canvas.height) {
-                    workCanvas.width = canvas.width
-                    workCanvas.height = canvas.height
+                if (raw.width !== small.width || raw.height !== small.height) {
+                    raw.width = small.width
+                    raw.height = small.height
                 }
-                if (smoothCanvas.width !== canvas.width || smoothCanvas.height !== canvas.height) {
-                    smoothCanvas.width = canvas.width
-                    smoothCanvas.height = canvas.height
-                    maskSmoothInitRef.current = false
+                const rctx = raw.getContext('2d', { willReadFrequently: true })
+                if (!rctx) return
+
+                rctx.clearRect(0, 0, raw.width, raw.height)
+                rctx.drawImage(results.segmentationMask, 0, 0, raw.width, raw.height)
+                const imgData = rctx.getImageData(0, 0, raw.width, raw.height)
+                const pixels = imgData.data
+                const n = raw.width * raw.height
+
+                if (!smoothedMaskRef.current || smoothedMaskRef.current.length !== n) {
+                    const init = new Float32Array(n)
+                    for (let i = 0; i < n; i++) init[i] = pixels[i * 4 + 3] / 255
+                    smoothedMaskRef.current = init
                 }
+                const smoothed = smoothedMaskRef.current
 
-                const wctx = workCanvas.getContext('2d')
-                const sctx = smoothCanvas.getContext('2d')
-                if (!wctx || !sctx) return
-
-                wctx.clearRect(0, 0, workCanvas.width, workCanvas.height)
-                wctx.drawImage(results.segmentationMask, 0, 0, workCanvas.width, workCanvas.height)
-
-                if (!maskSmoothInitRef.current) {
-                    sctx.clearRect(0, 0, smoothCanvas.width, smoothCanvas.height)
-                    sctx.drawImage(workCanvas, 0, 0)
-                    maskSmoothInitRef.current = true
-                } else {
-                    sctx.globalAlpha = MASK_SMOOTHING_ALPHA
-                    sctx.drawImage(workCanvas, 0, 0)
-                    sctx.globalAlpha = 1
+                for (let i = 0; i < n; i++) {
+                    const a = pixels[i * 4 + 3] / 255
+                    const s = smoothed[i] * MASK_SMOOTHING + a * (1 - MASK_SMOOTHING)
+                    smoothed[i] = s
+                    const sharp = s <= MASK_LOW ? 0 : s >= MASK_HIGH ? 1 : (s - MASK_LOW) / (MASK_HIGH - MASK_LOW)
+                    const v = Math.round(sharp * 255)
+                    const off = i * 4
+                    pixels[off] = 255
+                    pixels[off + 1] = 255
+                    pixels[off + 2] = 255
+                    pixels[off + 3] = v
                 }
+                rctx.putImageData(imgData, 0, 0)
+
+                if (feather.width !== small.width || feather.height !== small.height) {
+                    feather.width = small.width
+                    feather.height = small.height
+                }
+                const fctx = feather.getContext('2d')
+                if (!fctx) return
+                fctx.clearRect(0, 0, feather.width, feather.height)
+                fctx.filter = `blur(${MASK_FEATHER_PX}px)`
+                fctx.drawImage(raw, 0, 0, feather.width, feather.height)
+                fctx.filter = 'none'
 
                 ctx.save()
                 ctx.clearRect(0, 0, canvas.width, canvas.height)
-                ctx.drawImage(smoothCanvas, 0, 0)
+                ctx.imageSmoothingEnabled = true
+                ctx.imageSmoothingQuality = 'high'
+                ctx.drawImage(feather, 0, 0, feather.width, feather.height, 0, 0, canvas.width, canvas.height)
                 ctx.globalCompositeOperation = 'source-in'
+                ctx.imageSmoothingQuality = 'high'
                 ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height)
                 ctx.restore()
 
@@ -254,7 +278,7 @@ const useCutout = (stream: MediaStream | null) => {
             segmenterRef.current?.close()
             segmenterRef.current = null
             pendingRef.current = false
-            maskSmoothInitRef.current = false
+            smoothedMaskRef.current = null
         }
     }, [stream])
 
@@ -264,16 +288,16 @@ const useCutout = (stream: MediaStream | null) => {
 interface Props {
     local: MediaStream | null
     remote: MediaStream | null
+    myName: string
     otherName: string
     onLeave: () => void
-    hovered: boolean
     onRequestCapture: () => void
     remoteTrigger: number
 }
 
 const MAX_SHOTS = 4
 
-export const Photobooth = ({ local, remote, otherName, onLeave, hovered, onRequestCapture, remoteTrigger }: Props) => {
+export const Photobooth = ({ local, remote, myName, otherName, onLeave, onRequestCapture, remoteTrigger }: Props) => {
     const localCutout = useCutout(local)
     const remoteCutout = useCutout(remote)
     const outputRef = useRef<HTMLCanvasElement>(null)
@@ -287,17 +311,22 @@ export const Photobooth = ({ local, remote, otherName, onLeave, hovered, onReque
     const countdownRef = useRef<number | null>(null)
     const lastRemoteTrigger = useRef(0)
 
+    const mySide: 'left' | 'right' = myName.trim().toLowerCase() <= otherName.trim().toLowerCase() ? 'left' : 'right'
+
     useEffect(() => {
+        const container = containerRef.current
+        const out = outputRef.current
+        if (!container || !out) return
+
         const resize = () => {
-            const out = outputRef.current
-            const container = containerRef.current
-            if (!out || !container) return
             out.width = container.clientWidth
             out.height = container.clientHeight
         }
         resize()
-        window.addEventListener('resize', resize)
-        return () => window.removeEventListener('resize', resize)
+
+        const observer = new ResizeObserver(() => resize())
+        observer.observe(container)
+        return () => observer.disconnect()
     }, [])
 
     const drawPerson = (
@@ -309,24 +338,44 @@ export const Photobooth = ({ local, remote, otherName, onLeave, hovered, onReque
     ) => {
         const canvas = cutout.canvasRef.current
         if (!canvas || !canvas.width || !canvas.height) return
-        const cropTop = canvas.height * 0.22
+        const cropTop = canvas.height * 0.15
         const srcH = canvas.height - cropTop
         const srcW = canvas.width
-        const scale = (h * 0.82) / srcH
+        const scale = (h * 0.98) / srcH
         const dw = srcW * scale
         const dh = srcH * scale
         const dx = slotX + (slotW - dw) / 2
         const dy = h - dh
 
         ctx.save()
-        ctx.globalAlpha = 0.35
+        ctx.beginPath()
+        ctx.rect(slotX, 0, slotW, h)
+        ctx.clip()
+
+        ctx.save()
+        ctx.globalAlpha = 0.32
+        ctx.filter = 'blur(16px)'
+        ctx.translate(dx + dw, dy)
+        ctx.scale(-1, 1)
+        ctx.drawImage(canvas, 0, cropTop, srcW, srcH, 0, 0, dw, dh)
+        ctx.filter = 'none'
+        ctx.restore()
+
+        ctx.save()
+        ctx.globalAlpha = 0.3
         ctx.fillStyle = '#000'
         ctx.beginPath()
         ctx.ellipse(dx + dw / 2, h - 6, dw * 0.32, 10, 0, 0, Math.PI * 2)
         ctx.fill()
         ctx.restore()
 
-        ctx.drawImage(canvas, 0, cropTop, srcW, srcH, dx, dy, dw, dh)
+        ctx.save()
+        ctx.translate(dx + dw, dy)
+        ctx.scale(-1, 1)
+        ctx.drawImage(canvas, 0, cropTop, srcW, srcH, 0, 0, dw, dh)
+        ctx.restore()
+
+        ctx.restore()
     }
 
     useEffect(() => {
@@ -337,17 +386,18 @@ export const Photobooth = ({ local, remote, otherName, onLeave, hovered, onReque
                 const w = out.width
                 const h = out.height
                 BACKGROUNDS[bgIndex].draw(ctx, w, h)
-                const gap = w * 0.015
-                const slotW = w / 2 - gap
-                drawPerson(ctx, remoteCutout, w / 2 + gap / 2, slotW, h)
-                drawPerson(ctx, localCutout, 0, slotW, h)
+                const slotW = w * 0.56
+                const leftCutout = mySide === 'left' ? localCutout : remoteCutout
+                const rightCutout = mySide === 'left' ? remoteCutout : localCutout
+                drawPerson(ctx, leftCutout, 0, slotW, h)
+                drawPerson(ctx, rightCutout, w - slotW, slotW, h)
             }
             rafRef.current = requestAnimationFrame(loop)
         }
         loop()
         return () => cancelAnimationFrame(rafRef.current)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bgIndex])
+    }, [bgIndex, mySide])
 
     const captureFrame = (): string | null => {
         const out = outputRef.current
@@ -508,28 +558,28 @@ export const Photobooth = ({ local, remote, otherName, onLeave, hovered, onReque
                 </div>
             )}
 
-            <div className={`absolute top-3 left-3 transition-all duration-300 ${hovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-1 pointer-events-none'}`}>
+            <div className="absolute top-3 left-3">
                 <button
                     onClick={onLeave}
                     title="back to activities"
-                    className="flex items-center justify-center h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white/90 hover:bg-black/60 transition-colors"
+                    className="flex items-center justify-center h-9 w-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-white/90 hover:bg-black/70 transition-colors"
                 >
                     <i className="fa-solid fa-arrow-left text-xs" />
                 </button>
             </div>
 
             {bothStreaming && !modelsFailed && shots.length > 0 && (
-                <div className={`absolute top-3 right-3 flex items-center gap-2 transition-all duration-300 ${hovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-1 pointer-events-none'}`}>
+                <div className="absolute top-3 right-3 flex items-center gap-2">
                     <button
                         onClick={downloadStrip}
-                        className="flex items-center gap-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 px-4 py-2 text-xs font-bold text-white/90 hover:bg-black/60 transition-colors"
+                        className="flex items-center gap-1.5 rounded-full bg-black/50 backdrop-blur-md border border-white/10 px-4 py-2 text-xs font-bold text-white/90 hover:bg-black/70 transition-colors"
                     >
                         <i className="fa-solid fa-download" />
                         download strip
                     </button>
                     <button
                         onClick={() => setShots([])}
-                        className="flex items-center gap-1.5 rounded-full bg-berry-300/20 backdrop-blur-md border border-berry-300/20 px-4 py-2 text-xs font-bold text-berry-300 hover:bg-berry-300/35 transition-colors"
+                        className="flex items-center gap-1.5 rounded-full bg-berry-300/25 backdrop-blur-md border border-berry-300/25 px-4 py-2 text-xs font-bold text-berry-300 hover:bg-berry-300/40 transition-colors"
                     >
                         <i className="fa-solid fa-trash" />
                         clear
@@ -538,9 +588,9 @@ export const Photobooth = ({ local, remote, otherName, onLeave, hovered, onReque
             )}
 
             {bothStreaming && !modelsFailed && (
-                <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 transition-all duration-300 ${hovered ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3">
                     {shots.length > 0 && (
-                        <div className="flex items-center gap-2 rounded-2xl bg-cocoa-900/85 backdrop-blur p-2">
+                        <div className="flex items-center gap-2 rounded-2xl bg-cocoa-900/90 backdrop-blur p-2">
                             {shots.map((shot, i) => (
                                 <div key={i} className="group relative h-14 w-20 shrink-0 overflow-hidden rounded-lg">
                                     <img
@@ -559,7 +609,7 @@ export const Photobooth = ({ local, remote, otherName, onLeave, hovered, onReque
                             ))}
                         </div>
                     )}
-                    <div className="flex items-center gap-2 rounded-full bg-cocoa-900/85 backdrop-blur px-3 py-2">
+                    <div className="flex items-center gap-2 rounded-full bg-cocoa-900/90 backdrop-blur px-3 py-2">
                         {BACKGROUNDS.map((bg, i) => (
                             <button
                                 key={bg.key}

@@ -1425,9 +1425,9 @@ export const Room = ({ peer, name, leave }: Props) => {
                                         <Photobooth
                                             local={local}
                                             remote={remote}
+                                            myName={name}
                                             otherName={other}
                                             onLeave={leaveActivity}
-                                            hovered={videoHovered}
                                             onRequestCapture={requestPhotoboothCapture}
                                             remoteTrigger={photoboothTrigger}
                                         />

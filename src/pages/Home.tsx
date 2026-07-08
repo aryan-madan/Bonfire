@@ -162,7 +162,7 @@ export function Home() {
 
             <footer className="fixed bottom-4 left-0 right-0 flex justify-center">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-ember-100/25">
-                    v1.24
+                    v1.25
                 </span>
             </footer>
         </main>
