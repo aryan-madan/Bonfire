@@ -41,51 +41,39 @@ interface Background {
     draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void
 }
 
+const skyGradient = (stops: string[]) => (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h)
+    const step = 1 / (stops.length - 1)
+    stops.forEach((color, i) => g.addColorStop(i * step, color))
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, w, h)
+}
+
 const BACKGROUNDS: Background[] = [
     {
         key: 'hearth',
         label: 'Hearth',
-        draw: (ctx, w, h) => {
-            const g = ctx.createLinearGradient(0, 0, 0, h)
-            g.addColorStop(0, '#3a2620')
-            g.addColorStop(1, '#1c1310')
-            ctx.fillStyle = g
-            ctx.fillRect(0, 0, w, h)
-            ctx.fillStyle = 'rgba(244,161,93,0.14)'
-            ctx.beginPath()
-            ctx.ellipse(w / 2, h * 0.98, w * 0.75, h * 0.4, 0, 0, Math.PI * 2)
-            ctx.fill()
-        },
+        draw: skyGradient(['#3a2620', '#2a1a15', '#1c1310']),
+    },
+    {
+        key: 'golden',
+        label: 'Golden Hour',
+        draw: skyGradient(['#5b3a24', '#a85a2e', '#e08a3e']),
     },
     {
         key: 'dusk',
         label: 'Dusk',
-        draw: (ctx, w, h) => {
-            const g = ctx.createLinearGradient(0, 0, 0, h)
-            g.addColorStop(0, '#2a1f3d')
-            g.addColorStop(1, '#150f22')
-            ctx.fillStyle = g
-            ctx.fillRect(0, 0, w, h)
-            ctx.fillStyle = 'rgba(232,96,122,0.12)'
-            ctx.beginPath()
-            ctx.ellipse(w * 0.3, h * 0.18, w * 0.4, w * 0.4, 0, 0, Math.PI * 2)
-            ctx.fill()
-        },
+        draw: skyGradient(['#241a3d', '#3a2a52', '#c96b7a']),
+    },
+    {
+        key: 'night',
+        label: 'Night Sky',
+        draw: skyGradient(['#0a0e1c', '#141c30', '#1f2a44']),
     },
     {
         key: 'mint',
         label: 'Mint',
-        draw: (ctx, w, h) => {
-            const g = ctx.createLinearGradient(0, 0, 0, h)
-            g.addColorStop(0, '#1b2e28')
-            g.addColorStop(1, '#0f1a17')
-            ctx.fillStyle = g
-            ctx.fillRect(0, 0, w, h)
-            ctx.fillStyle = 'rgba(125,216,176,0.12)'
-            ctx.beginPath()
-            ctx.ellipse(w * 0.7, h * 0.15, w * 0.45, w * 0.45, 0, 0, Math.PI * 2)
-            ctx.fill()
-        },
+        draw: skyGradient(['#122421', '#1b2e28', '#3c6e5c']),
     },
 ]
 
@@ -311,7 +299,7 @@ export const Photobooth = ({ local, remote, myName, otherName, onLeave, onReques
     const countdownRef = useRef<number | null>(null)
     const lastRemoteTrigger = useRef(0)
 
-    const mySide: 'left' | 'right' = myName.trim().toLowerCase() <= otherName.trim().toLowerCase() ? 'left' : 'right'
+    const mySide: 'left' | 'right' = (myName ?? '').trim().toLowerCase() <= (otherName ?? '').trim().toLowerCase() ? 'left' : 'right'
 
     useEffect(() => {
         const container = containerRef.current

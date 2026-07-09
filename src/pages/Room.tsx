@@ -1346,7 +1346,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                                             <button
                                                 onClick={toggleMic}
                                                 title="Toggle mic (M)"
-                                                className={`flex items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
+                                                className={`flex shrink-0 items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
                                             >
                                                 <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
                                             </button>
@@ -1354,7 +1354,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                                                 onClick={toggleCam}
                                                 disabled={screenSharing}
                                                 title="Toggle camera (V)"
-                                                className={`flex items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
+                                                className={`flex shrink-0 items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
                                             >
                                                 <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
                                             </button>
