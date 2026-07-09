@@ -34,7 +34,7 @@ Experience Bonfire [here.](https://usebonfire.vercel.app/)
 | **Whiteboard** | Doodle and sketch together in real time. |
 | **Photobooth** | Cut yourselves out and drop into the same background, almost like you're there together. |
 | **Study** | Study together using a synced Pomodoro timer. |
-| **Reminds Me of You** | Send them a song that reminds you of them. Built by [Niyikes](https://github.com/niyikes/reminds-me-of-you). |
+| **Reminds Me of You** | Send them a song that reminds you of them. Built by [niyikes](https://github.com/niyikes/reminds-me-of-you). |
 
 ## AI Usage
 
