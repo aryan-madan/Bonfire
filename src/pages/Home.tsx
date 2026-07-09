@@ -319,7 +319,7 @@ function JoinField({ value, onChange, onSubmit, error, isValid }: {
 
     return (
         <div>
-            <div className={`group flex items-center gap-3 rounded-2xl bg-cocoa-800 px-4 py-3.5 transition focus-within:bg-cocoa-700 focus-within:ring-ember-400/30 ${error ? 'ring-berry-400/70' : isValid ? 'ring-mint-300/35 focus-within:ring-mint-300/65' : 'ring-ember-100/10 focus-within:ring-ember-400/55'}`}>
+            <div className={`group flex items-center gap-3 rounded-2xl bg-cocoa-800 px-4 py-3.5 ring-1 transition focus-within:bg-cocoa-700 ${error ? 'ring-berry-400/70' : isValid ? 'ring-transparent focus-within:ring-mint-300/65' : 'ring-transparent focus-within:ring-ember-400/30'}`}>
                 <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm transition ${isValid ? 'bg-mint-300/15 text-mint-300' : 'bg-cocoa-700 text-ember-100/30'}`}>
                     <i className="fa-solid fa-link text-xs" />
                 </span>
