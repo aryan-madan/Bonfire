@@ -1,31 +1,29 @@
 @import "tailwindcss";
-
 @font-face {
-  font-family: 'Pangram';
-  src: url('/fonts/PPPangramSansRounded-Thin.otf') format('opentype');
-  font-weight: 100;
+font-family: 'Pangram';
+src: url('/fonts/PPPangramSansRounded-Thin.otf') format('opentype');
+font-weight: 100;
 }
 @font-face {
-  font-family: 'Pangram';
-  src: url('/fonts/PPPangramSansRounded-Light.otf') format('opentype');
-  font-weight: 300;
+font-family: 'Pangram';
+src: url('/fonts/PPPangramSansRounded-Light.otf') format('opentype');
+font-weight: 300;
 }
 @font-face {
-  font-family: 'Pangram';
-  src: url('/fonts/PPPangramSansRounded-Medium.otf') format('opentype');
-  font-weight: 500;
+font-family: 'Pangram';
+src: url('/fonts/PPPangramSansRounded-Medium.otf') format('opentype');
+font-weight: 500;
 }
 @font-face {
-  font-family: 'Pangram';
-  src: url('/fonts/PPPangramSansRounded-Semibold.otf') format('opentype');
-  font-weight: 600;
+font-family: 'Pangram';
+src: url('/fonts/PPPangramSansRounded-Semibold.otf') format('opentype');
+font-weight: 600;
 }
 @font-face {
-  font-family: 'Pangram';
-  src: url('/fonts/PPPangramSansRounded-Bold.otf') format('opentype');
-  font-weight: 700;
+font-family: 'Pangram';
+src: url('/fonts/PPPangramSansRounded-Bold.otf') format('opentype');
+font-weight: 700;
 }
-
 @theme {
   --font-sans: 'Pangram', system-ui, sans-serif;
   --color-ember-50: #fff7ed;
@@ -42,48 +40,41 @@
   --color-mint-300: #86efac;
   --color-berry-300: #fb7185;
 }
-
 :root {
   font-family: 'Pangram', system-ui, sans-serif;
-  color: #fff7ed;
-  background: #12100f;
+  color: var(--color-ember-50);
+  background: var(--color-cocoa-900);
 }
-
 * {
   box-sizing: border-box;
 }
-
 html,
 body,
 #root {
   min-height: 100%;
   margin: 0;
 }
-
 body {
   min-width: 320px;
-  background: #12100f;
+  background: var(--color-cocoa-900);
+  color: var(--color-ember-50);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 200ms ease, color 200ms ease;
 }
-
 button,
 input {
   font: inherit;
 }
-
 button {
   cursor: pointer;
 }
-
 button:disabled {
   cursor: not-allowed;
 }
-
 input,
 button {
   outline: none;
 }
-
 @keyframes soft-pop {
   from {
     opacity: 0;
@@ -94,9 +85,40 @@ button {
     transform: translateY(0) scale(1);
   }
 }
-
 @keyframes tiny-spin {
   to {
     transform: rotate(360deg);
   }
+}
+
+[data-theme="ember"] {
+  --color-ember-50: #fff7ed;
+  --color-ember-100: #fed7aa;
+  --color-ember-300: #fdba74;
+  --color-ember-400: #fb923c;
+  --color-ember-500: #f97316;
+  --color-cocoa-900: #12100f;
+  --color-cocoa-800: #1c1917;
+  --color-cocoa-700: #292524;
+  --color-plum-900: #171514;
+  --color-plum-800: #211f1d;
+  --color-plum-700: #302c29;
+  --color-mint-300: #86efac;
+  --color-berry-300: #fb7185;
+}
+
+[data-theme="night"] {
+  --color-ember-50: #e6e8ef;
+  --color-ember-100: #b0b6c8;
+  --color-ember-300: #f2b378;
+  --color-ember-400: #f0954a;
+  --color-ember-500: #e87d29;
+  --color-cocoa-900: #0d0e13;
+  --color-cocoa-800: #14161d;
+  --color-cocoa-700: #1e2129;
+  --color-plum-900: #0a0b0f;
+  --color-plum-800: #111319;
+  --color-plum-700: #191c24;
+  --color-mint-300: #6ee7b7;
+  --color-berry-300: #f87171;
 }

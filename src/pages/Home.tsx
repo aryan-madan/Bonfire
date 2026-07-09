@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { host, join, poll, type Peer } from '../lib/rtc'
 import { Room } from './Room'
+import { THEMES, getStoredTheme, applyTheme } from '../lib/theme'
 
 type Mode = 'idle' | 'create' | 'joining'
 type Status = 'idle' | 'generating' | 'waiting' | 'connecting' | 'connected'
@@ -35,6 +36,7 @@ export function Home() {
     const [status, setStatus] = useState<Status>('idle')
     const [activePeer, setActivePeer] = useState<Peer | null>(null)
     const [link, setLink] = useState('')
+    const [theme, setTheme] = useState(getStoredTheme)
 
     const named = name.trim().length > 0
     const joinValid = !!extractRoom(joinInput)
@@ -42,6 +44,11 @@ export function Home() {
     function saveName(v: string) {
         setName(v)
         localStorage.setItem('bf-name', v)
+    }
+
+    function changeTheme(key: string) {
+        setTheme(key)
+        applyTheme(key)
     }
 
     function cleanup() {
@@ -94,6 +101,10 @@ export function Home() {
 
     return (
         <main className="grid min-h-screen place-items-center bg-cocoa-900 px-4 py-8 text-ember-50">
+            <div className="fixed top-4 right-4 z-20">
+                <ThemeDropdown value={theme} onChange={changeTheme} />
+            </div>
+
             <section className="w-full max-w-[400px]">
                 <header className="mb-8 text-center">
                     <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-[1.25rem]">
@@ -166,6 +177,67 @@ export function Home() {
                 </span>
             </footer>
         </main>
+    )
+}
+
+function ThemeDropdown({ value, onChange }: { value: string; onChange: (key: string) => void }) {
+    const [open, setOpen] = useState(false)
+    const ref = useRef<HTMLDivElement>(null)
+    const current = THEMES.find(t => t.key === value) ?? THEMES[0]
+
+    useEffect(() => {
+        if (!open) return
+        const onDown = (e: MouseEvent) => {
+            if (ref.current?.contains(e.target as Node)) return
+            setOpen(false)
+        }
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+        window.addEventListener('mousedown', onDown, true)
+        window.addEventListener('keydown', onKey)
+        return () => {
+            window.removeEventListener('mousedown', onDown, true)
+            window.removeEventListener('keydown', onKey)
+        }
+    }, [open])
+
+    return (
+        <div ref={ref} className="relative">
+            <button
+                onClick={() => setOpen(v => !v)}
+                title="theme"
+                className={`flex items-center gap-2 rounded-full bg-cocoa-800 px-3 py-2 transition-colors ${open ? 'bg-cocoa-700' : 'hover:bg-cocoa-700'}`}
+            >
+                <span
+                    className="h-5 w-5 shrink-0 rounded-full"
+                    style={{
+                        background: `conic-gradient(${current.swatch[0]} 0deg 120deg, ${current.swatch[1]} 120deg 240deg, ${current.swatch[2]} 240deg 360deg)`,
+                    }}
+                />
+                <span className="text-xs font-bold text-ember-100/70">{current.label}</span>
+                <i className={`fa-solid fa-chevron-down text-[0.55rem] text-ember-100/30 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+
+            {open && (
+                <div className="absolute right-0 top-[calc(100%+8px)] z-30 w-48 rounded-2xl bg-plum-900 p-1.5 shadow-2xl ring-1 ring-white/[0.08]">
+                    {THEMES.map(t => (
+                        <button
+                            key={t.key}
+                            onClick={() => { onChange(t.key); setOpen(false) }}
+                            className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-bold transition-colors ${value === t.key ? 'bg-cocoa-800 text-ember-50' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                        >
+                            <span
+                                className="h-4 w-4 shrink-0 rounded-full"
+                                style={{
+                                    background: `conic-gradient(${t.swatch[0]} 0deg 120deg, ${t.swatch[1]} 120deg 240deg, ${t.swatch[2]} 240deg 360deg)`,
+                                }}
+                            />
+                            <span className="min-w-0 flex-1 truncate">{t.label}</span>
+                            {value === t.key && <i className="fa-solid fa-check text-[0.6rem] shrink-0" />}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
     )
 }
 
