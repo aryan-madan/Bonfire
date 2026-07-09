@@ -23,10 +23,35 @@ No data is stored anywhere except for your nickname, which you enter at the star
 ## Experience
 Experience Bonfire [here.](https://usebonfire.vercel.app/)
 
+### Activity List
+
+#### YouTube
+Watch YouTube videos together, in sync.
+
+#### Screen Share
+Share your screen with the room.
+
+#### Spades of Streaming
+Browse and watch movies together on Spades of Streaming, my streaming service.
+
+#### Whiteboard
+Doodle and sketch together in real time.
+
+#### Photobooth
+Cut yourselves out and drop into the same background, almost like you're there together!
+
+#### Study
+Study together using a synced Pomodoro timer.
+
+#### Reminds Me of You by [Niyikes](https://github.com/niyikes/reminds-me-of-you)
+Send them a song that reminds you of them.
+
 ## AI Usage
 - debugging
 - css
 - prototyping video calls
+- photobooth
+- whiteboard bugs
 
 Made with ❤️ by Ary<br>
 Love to the point of creation
