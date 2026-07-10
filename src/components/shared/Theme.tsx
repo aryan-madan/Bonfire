@@ -1,4 +1,4 @@
-import { THEMES } from '../lib/theme'
+import { THEMES } from '../../lib/theme.ts'
 
 export function ThemePicker({ value, onChange }: { value: string; onChange: (key: string) => void }) {
     return (

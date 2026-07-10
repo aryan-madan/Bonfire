@@ -4,9 +4,9 @@ import { type Peer, send } from '../lib/rtc'
 import { Player, type PlayerHandle } from '../components/activities/Player'
 import { type Toast, ToastStack } from '../components/shared/Toast'
 import { type Item, QueueBar } from '../components/activities/Queue'
-import { av, VideoTile, ScreenStage } from '../components/call/Video'
+import { VideoTile, ScreenStage } from '../components/call/Video'
 import { type ContextTarget, type ContextMenuState, EndRoomModal, EndedScreen, TileContextMenu } from '../components/call/Overlay'
-import { NavBtn, DeviceDropdown, TypingDots } from '../components/call/Controls'
+import { NavBtn, DeviceDropdown } from '../components/call/Controls'
 import { type Burst, ReactionOverlay, ReactionPicker } from '../components/activities/Reaction'
 import { Whiteboard, type Stroke } from '../components/activities/Whiteboard'
 import { Photobooth } from '../components/activities/Photobooth'
@@ -982,75 +982,6 @@ export const Room = ({ peer, name, leave }: Props) => {
     const label = left ? `${other || 'they'} left` : other ? `${name} + ${other}` : 'waiting...'
     const sharingActive = screenSharing || remoteScreenSharing
 
-    const callControls = (
-        <>
-            {!local ? (
-                <div className="grid grid-cols-2 gap-2 mt-1 w-full shrink-0">
-                    <button
-                        className="w-full rounded-full bg-cocoa-800 py-2 text-xs font-bold text-ember-100/70 hover:bg-cocoa-700 disabled:opacity-40 transition-colors"
-                        disabled={busy}
-                        onClick={() => startMedia(false)}
-                    >
-                        <i className="fa-solid fa-microphone mr-1" />
-                        voice
-                    </button>
-                    <button
-                        className="w-full rounded-full bg-ember-400 py-2 text-xs font-bold text-white hover:bg-ember-500 disabled:opacity-40 transition-colors"
-                        disabled={busy}
-                        onClick={() => startMedia(true)}
-                    >
-                        <i className="fa-solid fa-video mr-1" />
-                        camera
-                    </button>
-                </div>
-            ) : (
-                <div className="mt-1 flex flex-col gap-2 w-full shrink-0">
-                    <div className="grid grid-cols-2 gap-2 w-full">
-                        <button
-                            onClick={toggleMic}
-                            title="Toggle mic (M)"
-                            className={`flex w-full items-center justify-center rounded-full py-2.5 text-sm transition-colors ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
-                        >
-                            <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'} w-4 text-center`} />
-                        </button>
-                        <button
-                            onClick={toggleCam}
-                            disabled={screenSharing}
-                            title="Toggle camera (V)"
-                            className={`flex w-full items-center justify-center rounded-full py-2.5 text-sm transition-colors disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
-                        >
-                            <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'} w-4 text-center`} />
-                        </button>
-                    </div>
-                    {(mics.length > 1 || speakers.length > 1) && (
-                        <div className="flex flex-col gap-1.5 w-full">
-                            {mics.length > 1 && (
-                                <DeviceDropdown
-                                    icon="fa-solid fa-microphone"
-                                    value={micDevice}
-                                    options={mics}
-                                    fallback="Default microphone"
-                                    onChange={switchMic}
-                                    disabled={busy}
-                                />
-                            )}
-                            {speakers.length > 1 && (
-                                <DeviceDropdown
-                                    icon="fa-solid fa-headphones"
-                                    value={speakerDevice}
-                                    options={speakers}
-                                    fallback="Default output"
-                                    onChange={setSpeakerDevice}
-                                    disabled={busy}
-                                />
-                            )}
-                        </div>
-                    )}
-                </div>
-            )}
-        </>
-    )
-
     return (
         <div className="flex flex-col h-screen overflow-hidden bg-cocoa-900 text-ember-50">
             <audio ref={remoteAudioEl} autoPlay className="hidden" />
@@ -1438,80 +1369,6 @@ export const Room = ({ peer, name, leave }: Props) => {
                         )}
                     </>
                 )}
-
-                <SidePanel open={messagesOpen} width={320} side="right">
-                    <div className="flex-1 flex flex-col rounded-[1.75rem] bg-plum-900 overflow-hidden min-h-0 w-[320px]">
-                        <div className="px-4 py-3 shrink-0">
-                            <h2 className="text-sm font-bold text-ember-50">chat</h2>
-                            <p className="mt-0.5 text-xs font-bold text-ember-100/45">
-                                {other && !left ? `with ${other}` : left ? `${other} left` : 'waiting'}
-                            </p>
-                        </div>
-                        {left && (
-                            <div className="mx-3 mb-2 shrink-0 rounded-[1.1rem] bg-berry-300/15 px-3 py-2 text-xs font-bold text-berry-300">
-                                {other} disconnected. They can rejoin with the same link.
-                            </div>
-                        )}
-                        <div className="flex-1 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-h-0">
-                            {groups.length === 0 && !otherTyping && (
-                                <div className="grid h-full place-items-center text-center text-sm font-semibold text-ember-100/35 py-8">
-                                    <div className="space-y-2">
-                                        <i className="fa-regular fa-comment text-2xl" />
-                                        <p>no messages yet</p>
-                                    </div>
-                                </div>
-                            )}
-                            <div className="flex flex-col gap-4">
-                                {groups.map(g => (
-                                    <div key={g.id} className={`flex items-end gap-2 ${g.mine ? 'flex-row-reverse' : ''}`}>
-                                        <div className={`h-7 w-7 rounded-full grid place-items-center text-[0.6rem] font-bold text-white shrink-0 mb-0.5 ${g.mine ? 'bg-ember-400' : 'bg-mint-300'}`}>
-                                            {av(g.sender)}
-                                        </div>
-                                        <div className={`flex max-w-[78%] min-w-0 flex-col gap-1 ${g.mine ? 'items-end' : 'items-start'}`}>
-                                            {!g.mine && <span className="px-2 text-xs font-bold text-ember-100/35">{g.sender}</span>}
-                                            {g.texts.map((t, i) => (
-                                                <span
-                                                    key={i}
-                                                    className={`inline-block max-w-full break-all px-3 py-2 text-sm font-semibold leading-5 ${g.mine ? 'bg-ember-400 text-white' : 'bg-cocoa-800 text-ember-50'} ${bubbleRadius(g.mine, g.texts.length, i)}`}
-                                                >
-                                                    {renderMessageText(t, g.mine, g.sender)}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                                {otherTyping && !left && (
-                                    <div className="flex items-end gap-2">
-                                        <div className="h-7 w-7 rounded-full grid place-items-center text-[0.6rem] font-bold text-white shrink-0 mb-0.5 bg-mint-300">
-                                            {av(other || '?')}
-                                        </div>
-                                        <TypingDots />
-                                    </div>
-                                )}
-                            </div>
-                            <div ref={bottom} />
-                        </div>
-                        <div className="p-3 shrink-0">
-                            <div className="flex items-center gap-2 rounded-[1.25rem] bg-cocoa-800 px-3 py-2">
-                                <input
-                                    className="min-w-0 flex-1 bg-transparent px-1 text-sm font-semibold text-ember-50 placeholder:text-ember-100/30 focus:outline-none"
-                                    value={draft}
-                                    onChange={e => handleDraftChange(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && sendMsg()}
-                                    onBlur={stopTyping}
-                                    placeholder={other && !left ? `message ${other}` : 'say something'}
-                                />
-                                <button
-                                    className="grid h-9 w-9 place-items-center rounded-full bg-ember-400 text-white hover:bg-ember-500 disabled:opacity-30 transition-colors shrink-0"
-                                    onClick={sendMsg}
-                                    disabled={!draft.trim()}
-                                >
-                                    <i className="fa-solid fa-paper-plane text-xs" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </SidePanel>
             </div>
         </div>
     )
