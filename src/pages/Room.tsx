@@ -1,32 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { pack, unpack } from '../lib/messages'
 import { type Peer, send } from '../lib/rtc'
-import { Player, type PlayerHandle } from '../components/Player'
-import { type Toast, ToastStack } from '../components/Toast'
-import { type Item, QueueBar } from '../components/Queue'
-import { av, VideoTile, ScreenStage } from '../components/Video'
-import { type ContextTarget, type ContextMenuState, EndRoomModal, EndedScreen, TileContextMenu } from '../components/Overlay'
-import { NavBtn, DeviceDropdown, TypingDots } from '../components/Controls'
-import { type Burst, ReactionOverlay, ReactionPicker } from '../components/Reaction'
-import { Whiteboard, type Stroke } from '../components/Whiteboard'
-import { Photobooth } from '../components/Photobooth'
-import { StudyTogether, type StudyState, defaultStudyState, nextAfter } from '../components/Study'
-import { type ActivityKey, ActivityMenu, ActivityInfoModal, SpadesFrame, RmoyFrame } from '../components/Activities'
-
-interface Message {
-    id: string
-    sender: string
-    text: string
-    stamp: number
-}
-
-interface Group {
-    id: string
-    sender: string
-    texts: string[]
-    mine: boolean
-    stamp: number
-}
+import { Player, type PlayerHandle } from '../components/activities/Player'
+import { type Toast, ToastStack } from '../components/shared/Toast'
+import { type Item, QueueBar } from '../components/activities/Queue'
+import { av, VideoTile, ScreenStage } from '../components/call/Video'
+import { type ContextTarget, type ContextMenuState, EndRoomModal, EndedScreen, TileContextMenu } from '../components/call/Overlay'
+import { NavBtn, DeviceDropdown, TypingDots } from '../components/call/Controls'
+import { type Burst, ReactionOverlay, ReactionPicker } from '../components/activities/Reaction'
+import { Whiteboard, type Stroke } from '../components/activities/Whiteboard'
+import { Photobooth } from '../components/activities/Photobooth'
+import { StudyTogether, type StudyState, defaultStudyState, nextAfter } from '../components/activities/Study'
+import { type ActivityKey, ActivityMenu, ActivityInfoModal, SpadesFrame, RmoyFrame } from '../components/activities/Activities'
+import { Messages, type Message } from '../components/chat/Messages'
 
 interface Props {
     peer: Peer
@@ -37,21 +23,6 @@ interface Props {
 
 type SinkAudio = HTMLAudioElement & {
     setSinkId?: (id: string) => Promise<void>
-}
-
-const toGroups = (messages: Message[], name: string): Group[] => {
-    const groups: Group[] = []
-    for (const m of messages) {
-        const last = groups[groups.length - 1]
-        const mine = m.sender === name
-        if (last && last.mine === mine && m.stamp - last.stamp < 120000) {
-            last.texts.push(m.text)
-            last.stamp = m.stamp
-        } else {
-            groups.push({ id: m.id, sender: m.sender, texts: [m.text], mine, stamp: m.stamp })
-        }
-    }
-    return groups
 }
 
 const isYT = (url: string) =>
@@ -102,51 +73,6 @@ const waitForIce = (conn: RTCPeerConnection): Promise<void> => {
         conn.addEventListener('icegatheringstatechange', onState)
         setTimeout(done, 1800)
     })
-}
-
-const bubbleRadius = (mine: boolean, total: number, i: number): string => {
-    if (total === 1) return 'rounded-[1.15rem]'
-    if (mine) {
-        if (i === 0) return 'rounded-[1.15rem] rounded-br-[0.35rem]'
-        if (i === total - 1) return 'rounded-[1.15rem] rounded-tr-[0.35rem]'
-        return 'rounded-[1.15rem] rounded-r-[0.35rem]'
-    }
-    if (i === 0) return 'rounded-[1.15rem] rounded-bl-[0.35rem]'
-    if (i === total - 1) return 'rounded-[1.15rem] rounded-tl-[0.35rem]'
-    return 'rounded-[1.15rem] rounded-l-[0.35rem]'
-}
-const RMOY_LINK = /https?:\/\/reminds-me-of-you\.vercel\.app\/s\/[a-zA-Z0-9]+/g
-
-const renderMessageText = (text: string, mine: boolean, senderName: string) => {
-    const parts = text.split(RMOY_LINK)
-    const matches = text.match(RMOY_LINK) ?? []
-    if (!matches.length) return text
-
-    const introText = mine ? 'you sent a song!' : `${senderName} sent you a song!`
-
-    const nodes: React.ReactNode[] = []
-    parts.forEach((part, i) => {
-        if (part) nodes.push(<span key={`t-${i}`}>{part}</span>)
-        if (matches[i]) {
-            nodes.push(<span key={`t-intro-${i}`}>{introText} </span>)
-            nodes.push(
-                <a
-                    key={`link-${i}`}
-                    href={matches[i]}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold transition-colors ${mine
-                        ? 'bg-black/15 text-white hover:bg-black/25'
-                        : 'bg-ember-400/10 text-ember-50 hover:bg-ember-400/[0.18]'
-                        }`}
-                >
-                    <i className={`fa-solid fa-heart text-[0.7rem] ${mine ? 'text-white/70' : 'text-ember-400'}`} />
-                    reminds me of you
-                </a>
-            )
-        }
-    })
-    return nodes
 }
 
 const audioConstraints = (deviceId?: string): MediaTrackConstraints => ({
@@ -243,7 +169,6 @@ export const Room = ({ peer, name, leave }: Props) => {
     const [localSpeaking, setLocalSpeaking] = useState(false)
     const [remoteSpeaking, setRemoteSpeaking] = useState(false)
     const [bursts, setBursts] = useState<Burst[]>([])
-    const bottom = useRef<HTMLDivElement>(null)
     const player = useRef<PlayerHandle>(null)
     const [strokes, setStrokes] = useState<Stroke[]>([])
     const [photoboothTrigger, setPhotoboothTrigger] = useState(0)
@@ -561,10 +486,6 @@ export const Room = ({ peer, name, leave }: Props) => {
         const t = setTimeout(() => send(peer, pack('name', { name })), 600)
         return () => clearTimeout(t)
     }, [name, peer])
-
-    useEffect(() => {
-        bottom.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [messages, otherTyping])
 
     useEffect(() => {
         if (current) {
@@ -905,6 +826,14 @@ export const Room = ({ peer, name, leave }: Props) => {
         setDraft('')
     }
 
+    const sendGift = () => {
+        stopTyping()
+        const m: Message = { id: crypto.randomUUID(), sender: name, text: draft.trim(), stamp: Date.now(), kind: 'gift' }
+        setMessages(prev => [...prev, m])
+        bc('chat', m)
+        setDraft('')
+    }
+
     const addYT = async () => {
         const url = input.trim()
         if (!url) return
@@ -1050,7 +979,6 @@ export const Room = ({ peer, name, leave }: Props) => {
         bc('photobooth-capture', null)
     }
 
-    const groups = toGroups(messages, name)
     const label = left ? `${other || 'they'} left` : other ? `${name} + ${other}` : 'waiting...'
     const sharingActive = screenSharing || remoteScreenSharing
 
@@ -1208,52 +1136,19 @@ export const Room = ({ peer, name, leave }: Props) => {
 
             <div className="flex flex-1 gap-3 p-3 min-h-0">
 
-                <SidePanel open={callOpen && activityOpen} width={300} side="left">
-                    <div className="w-full rounded-[1.5rem] bg-plum-900 overflow-hidden flex flex-col flex-1 min-h-0">
-                        <div className="px-4 pt-3 pb-1 shrink-0">
-                            <span className="text-xs font-bold text-ember-50">call</span>
-                        </div>
-                        <div className="w-full px-4 pb-4 flex flex-col gap-2 box-border flex-1 min-h-0">
-                            <VideoTile
-                                isLocal={false}
-                                expanded={false}
-                                local={local}
-                                remote={remote}
-                                cam={cam}
-                                mic={mic}
-                                remoteCam={remoteCam}
-                                remoteMic={remoteMic}
-                                sharing={remoteScreenSharing}
-                                name={name}
-                                other={other}
-                                localVidRef={localVidRef}
-                                remoteVidRef={remoteVidRef}
-                                speaking={remoteSpeaking}
-                                onContextMenu={e => openContextMenu(e, 'remote')}
-                                forceHideVideo={remoteVideoHidden}
-                                mutedForYou={remoteMutedForMe}
-                            />
-                            <VideoTile
-                                isLocal={true}
-                                expanded={false}
-                                local={local}
-                                remote={remote}
-                                cam={cam}
-                                mic={mic}
-                                remoteCam={remoteCam}
-                                remoteMic={remoteMic}
-                                sharing={screenSharing}
-                                name={name}
-                                other={other}
-                                localVidRef={localVidRef}
-                                remoteVidRef={remoteVidRef}
-                                speaking={localSpeaking}
-                                onContextMenu={e => openContextMenu(e, 'local')}
-                                forceHideVideo={localVideoHidden}
-                            />
-                            {callControls}
-                        </div>
-                    </div>
+                <SidePanel open={messagesOpen} width={320} side="right">
+                    <Messages
+                        messages={messages}
+                        name={name}
+                        other={other}
+                        left={left}
+                        otherTyping={otherTyping}
+                        draft={draft}
+                        onDraftChange={handleDraftChange}
+                        onSend={sendMsg}
+                        onSendGift={sendGift}
+                        onBlur={stopTyping}
+                    />
                 </SidePanel>
 
                 {sharingActive ? (

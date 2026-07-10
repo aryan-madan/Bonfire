@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { NavBtn } from './Controls'
+import { NavBtn } from '../call/Controls'
 
 export interface Burst {
     id: string

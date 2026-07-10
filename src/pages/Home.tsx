@@ -37,6 +37,7 @@ export function Home() {
     const [activePeer, setActivePeer] = useState<Peer | null>(null)
     const [link, setLink] = useState('')
     const [theme, setTheme] = useState(getStoredTheme)
+    const [info, setInfo] = useState(false)
 
     const named = name.trim().length > 0
     const joinValid = !!extractRoom(joinInput)
@@ -75,7 +76,7 @@ export function Home() {
             setJoinError('')
             setStatus('connecting')
             setMode('joining')
-            setActivePeer(await join(room, () => setStatus('connected'), () => {}))
+            setActivePeer(await join(room, () => setStatus('connected'), () => { }))
             setLink(linkFor(room))
         } catch (e) {
             console.error('bonfire: join failed', e)
@@ -101,9 +102,18 @@ export function Home() {
 
     return (
         <main className="grid min-h-screen place-items-center bg-cocoa-900 px-4 py-8 text-ember-50">
-            <div className="fixed top-4 right-4 z-20">
+            <div className="fixed top-4 right-4 z-20 flex items-center gap-2">
+                <button
+                    onClick={() => setInfo(true)}
+                    title="about"
+                    className="grid h-9 w-9 place-items-center rounded-full bg-cocoa-800 text-ember-100/50 hover:text-ember-100/80 hover:bg-cocoa-700 transition-colors"
+                >
+                    <i className="fa-solid fa-info text-xs" />
+                </button>
                 <ThemeDropdown value={theme} onChange={changeTheme} />
             </div>
+
+            <InfoModal open={info} onClose={() => setInfo(false)} />
 
             <section className="w-full max-w-[400px]">
                 <header className="mb-8 text-center">
@@ -121,7 +131,7 @@ export function Home() {
                     <NameField value={name} onChange={saveName} />
 
                     <div
-                        className={`grid gap-2.5 overflow-hidden transition-all duration-300 ease-in-out ${named ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}
+                        className={`-mx-1 grid gap-2.5 overflow-hidden px-1 pt-1 pb-1 transition-all duration-300 ease-in-out ${named ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}
                     >
                         {mode === 'idle' && (
                             <>
@@ -137,7 +147,7 @@ export function Home() {
                                         icon="fa-solid fa-arrow-right-to-bracket"
                                         label="Join room"
                                         sublabel="Enter a code"
-                                        onClick={() => {}}
+                                        onClick={() => { }}
                                         accent="mint"
                                         disabled
                                         visualOnly
@@ -173,10 +183,56 @@ export function Home() {
 
             <footer className="fixed bottom-4 left-0 right-0 flex justify-center">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-ember-100/25">
-                    v1.26
+                    v1.27
                 </span>
             </footer>
         </main>
+    )
+}
+
+function InfoModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+    useEffect(() => {
+        if (!open) return
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [open, onClose])
+
+    if (!open) return null
+
+    return (
+        <div
+            className="fixed inset-0 z-40 grid place-items-center bg-black/50 backdrop-blur-sm px-4 [animation:soft-pop_0.2s_ease_both]"
+            onClick={onClose}
+        >
+            <div
+                className="w-full max-w-[360px] rounded-[1.5rem] bg-plum-900 p-6 text-center ring-1 ring-white/[0.08]"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-ember-400/15 text-ember-400">
+                    <i className="fa-solid fa-heart text-lg" />
+                </div>
+                <h2 className="text-lg font-bold text-ember-50">bonfire</h2>
+                <p className="mt-3 text-sm font-semibold leading-6 text-ember-100/60">
+                    made with <i className="fa-solid fa-heart text-ember-400" /> by{' '}
+                    <a
+                        href="https://aryanmadan.xyz"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-ember-50 underline decoration-ember-400/40 underline-offset-2 hover:decoration-ember-400"
+                    >
+                        Ary
+                    </a>
+                    , <br></br>love to the point of creation.
+                </p>
+                <button
+                    className="mt-5 rounded-full bg-cocoa-800 px-5 py-2 text-xs font-bold text-ember-100/70 hover:bg-cocoa-700 transition-colors"
+                    onClick={onClose}
+                >
+                    close
+                </button>
+            </div>
+        </div>
     )
 }
 
@@ -391,7 +447,7 @@ function CreateRoom({ setPeer, setStatus, onopen, onLink, back }: {
         if (started.current) return
         started.current = true
         setStatus('generating')
-        host(onopen, () => {}).then(({ peer: p, link, room }) => {
+        host(onopen, () => { }).then(({ peer: p, link, room }) => {
             setPeer(p)
             setInvite(link)
             setRoomCode(room)
