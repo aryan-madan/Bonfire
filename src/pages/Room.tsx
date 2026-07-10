@@ -148,7 +148,6 @@ export const Room = ({ peer, name, leave }: Props) => {
     const [screenPreview, setScreenPreview] = useState<MediaStream | null>(null)
     const [busy, setBusy] = useState(false)
     const [toasts, setToasts] = useState<Toast[]>([])
-    //const [linkCopied, setLinkCopied] = useState(false)
     const [study, setStudy] = useState<StudyState>(defaultStudyState)
     const [videoHovered, setVideoHovered] = useState(false)
     const [callOpen, setCallOpen] = useState(true)
@@ -892,14 +891,6 @@ export const Room = ({ peer, name, leave }: Props) => {
         setActivityOpen(v => !v)
     }
 
-    {/* const copyLink = () => {
-        void navigator.clipboard.writeText(link).then(() => {
-            setLinkCopied(true)
-            toast('Link copied', 'success')
-            setTimeout(() => setLinkCopied(false), 1800)
-        })
-    } */}
-
     const requestEnd = () => {
         setConfirmEnd(true)
     }
@@ -924,6 +915,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         setBursts(prev => [...prev, { id: crypto.randomUUID(), emoji }])
         bc('reaction', { emoji })
     }
+
     const updateStroke = (stroke: Stroke) => {
         setStrokes(prev => {
             const idx = prev.findIndex(s => s.id === stroke.id)
@@ -981,6 +973,7 @@ export const Room = ({ peer, name, leave }: Props) => {
 
     const label = left ? `${other || 'they'} left` : other ? `${name} + ${other}` : 'waiting...'
     const sharingActive = screenSharing || remoteScreenSharing
+    const callExpanded = callOpen && !activityOpen
 
     return (
         <div className="flex flex-col h-screen overflow-hidden bg-cocoa-900 text-ember-50">
@@ -1002,16 +995,6 @@ export const Room = ({ peer, name, leave }: Props) => {
                     )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                    {/* {link && (
-                        <button
-                            onClick={copyLink}
-                            title="Copy room link"
-                            className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${linkCopied ? 'bg-mint-300/20 text-mint-300' : 'bg-cocoa-800 text-ember-100/45 hover:text-ember-100/80 hover:bg-cocoa-700'}`}
-                        >
-                            <i className={`fa-solid ${linkCopied ? 'fa-check' : 'fa-link'} text-[0.6rem]`} />
-                            <span>{linkCopied ? 'copied' : 'copy link'}</span>
-                        </button>
-                    )} */}
                     <ReactionPicker onPick={fireReaction} />
                     <NavBtn
                         active={callOpen}
@@ -1067,21 +1050,6 @@ export const Room = ({ peer, name, leave }: Props) => {
 
             <div className="flex flex-1 gap-3 p-3 min-h-0">
 
-                <SidePanel open={messagesOpen} width={320} side="right">
-                    <Messages
-                        messages={messages}
-                        name={name}
-                        other={other}
-                        left={left}
-                        otherTyping={otherTyping}
-                        draft={draft}
-                        onDraftChange={handleDraftChange}
-                        onSend={sendMsg}
-                        onSendGift={sendGift}
-                        onBlur={stopTyping}
-                    />
-                </SidePanel>
-
                 {sharingActive ? (
                     <main className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
                         <ScreenStage
@@ -1093,106 +1061,216 @@ export const Room = ({ peer, name, leave }: Props) => {
                             onStop={toggleScreenShare}
                         />
                     </main>
+                ) : callExpanded ? (
+                    <div className="flex-1 flex flex-col self-stretch min-w-0 min-h-0 gap-3">
+                        <style>{`
+                            @keyframes callExpand {
+                                from { opacity: 0; transform: scale(0.97) translateY(8px); }
+                                to   { opacity: 1; transform: scale(1) translateY(0); }
+                            }
+                        `}</style>
+                        <div
+                            className="relative flex flex-1 gap-3 min-h-0 rounded-[1.75rem] overflow-hidden"
+                            style={{ animation: 'callExpand 380ms cubic-bezier(0.4,0,0.2,1) both' }}
+                        >
+                            <VideoTile
+                                isLocal={false}
+                                expanded={true}
+                                local={local}
+                                remote={remote}
+                                cam={cam}
+                                mic={mic}
+                                remoteCam={remoteCam}
+                                remoteMic={remoteMic}
+                                sharing={remoteScreenSharing}
+                                name={name}
+                                other={other}
+                                localVidRef={localVidRef}
+                                remoteVidRef={remoteVidRef}
+                                speaking={remoteSpeaking}
+                                onContextMenu={e => openContextMenu(e, 'remote')}
+                                forceHideVideo={remoteVideoHidden}
+                                mutedForYou={remoteMutedForMe}
+                            />
+                            <VideoTile
+                                isLocal={true}
+                                expanded={true}
+                                local={local}
+                                remote={remote}
+                                cam={cam}
+                                mic={mic}
+                                remoteCam={remoteCam}
+                                remoteMic={remoteMic}
+                                sharing={screenSharing}
+                                name={name}
+                                other={other}
+                                localVidRef={localVidRef}
+                                remoteVidRef={remoteVidRef}
+                                speaking={localSpeaking}
+                                onContextMenu={e => openContextMenu(e, 'local')}
+                                forceHideVideo={localVideoHidden}
+                            />
+
+                            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
+                                {!local ? (
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            className="flex items-center gap-2 rounded-full bg-cocoa-800/90 backdrop-blur px-5 py-2.5 text-xs font-bold text-ember-100/70 hover:bg-cocoa-700 disabled:opacity-40 transition-all"
+                                            disabled={busy}
+                                            onClick={() => startMedia(false)}
+                                        >
+                                            <i className="fa-solid fa-microphone" />
+                                            voice only
+                                        </button>
+                                        <button
+                                            className="flex items-center gap-2 rounded-full bg-ember-400/90 backdrop-blur px-5 py-2.5 text-xs font-bold text-white hover:bg-ember-500 disabled:opacity-40 transition-all"
+                                            disabled={busy}
+                                            onClick={() => startMedia(true)}
+                                        >
+                                            <i className="fa-solid fa-video" />
+                                            join with camera
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 rounded-full bg-cocoa-900/80 backdrop-blur px-4 py-2.5">
+                                        <button
+                                            onClick={toggleMic}
+                                            title="Toggle mic (M)"
+                                            className={`flex shrink-0 items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
+                                        >
+                                            <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
+                                        </button>
+                                        <button
+                                            onClick={toggleCam}
+                                            disabled={screenSharing}
+                                            title="Toggle camera (V)"
+                                            className={`flex shrink-0 items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
+                                        >
+                                            <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
+                                        </button>
+                                        {(mics.length > 1 || speakers.length > 1) && (
+                                            <>
+                                                <div className="w-px h-5 bg-ember-100/10 mx-1" />
+                                                {mics.length > 1 && (
+                                                    <DeviceDropdown
+                                                        icon="fa-solid fa-microphone"
+                                                        value={micDevice}
+                                                        options={mics}
+                                                        fallback="Default mic"
+                                                        onChange={switchMic}
+                                                        disabled={busy}
+                                                    />
+                                                )}
+                                                {speakers.length > 1 && (
+                                                    <DeviceDropdown
+                                                        icon="fa-solid fa-headphones"
+                                                        value={speakerDevice}
+                                                        options={speakers}
+                                                        fallback="Default output"
+                                                        onChange={setSpeakerDevice}
+                                                        disabled={busy}
+                                                    />
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 ) : (
                     <>
-                        <div
-                            className="flex-1 flex flex-col self-stretch min-w-0 min-h-0 gap-3"
-                            style={{ display: !activityOpen && callOpen ? 'flex' : 'none' }}
-                        >
-                            <style>{`
-                                @keyframes callExpand {
-                                    from { opacity: 0; transform: scale(0.97) translateY(8px); }
-                                    to   { opacity: 1; transform: scale(1) translateY(0); }
-                                }
-                            `}</style>
-                            <div
-                                className="relative flex flex-1 gap-3 min-h-0 rounded-[1.75rem] overflow-hidden"
-                                style={{ animation: 'callExpand 380ms cubic-bezier(0.4,0,0.2,1) both' }}
-                            >
-                                <VideoTile
-                                    isLocal={false}
-                                    expanded={true}
-                                    local={local}
-                                    remote={remote}
-                                    cam={cam}
-                                    mic={mic}
-                                    remoteCam={remoteCam}
-                                    remoteMic={remoteMic}
-                                    sharing={remoteScreenSharing}
-                                    name={name}
-                                    other={other}
-                                    localVidRef={localVidRef}
-                                    remoteVidRef={remoteVidRef}
-                                    speaking={remoteSpeaking}
-                                    onContextMenu={e => openContextMenu(e, 'remote')}
-                                    forceHideVideo={remoteVideoHidden}
-                                    mutedForYou={remoteMutedForMe}
-                                />
-                                <VideoTile
-                                    isLocal={true}
-                                    expanded={true}
-                                    local={local}
-                                    remote={remote}
-                                    cam={cam}
-                                    mic={mic}
-                                    remoteCam={remoteCam}
-                                    remoteMic={remoteMic}
-                                    sharing={screenSharing}
-                                    name={name}
-                                    other={other}
-                                    localVidRef={localVidRef}
-                                    remoteVidRef={remoteVidRef}
-                                    speaking={localSpeaking}
-                                    onContextMenu={e => openContextMenu(e, 'local')}
-                                    forceHideVideo={localVideoHidden}
-                                />
+                        <SidePanel open={callOpen} width={300} side="left">
+                            <div className="flex h-full min-h-0 flex-col gap-3 rounded-[1.75rem] bg-plum-900 p-3">
+                                <h2 className="shrink-0 px-1 text-sm font-bold text-ember-50">call</h2>
 
-                                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
+                                <div className="flex flex-1 min-h-0 flex-col gap-3">
+                                    <VideoTile
+                                        isLocal={false}
+                                        expanded={false}
+                                        local={local}
+                                        remote={remote}
+                                        cam={cam}
+                                        mic={mic}
+                                        remoteCam={remoteCam}
+                                        remoteMic={remoteMic}
+                                        sharing={remoteScreenSharing}
+                                        name={name}
+                                        other={other}
+                                        localVidRef={localVidRef}
+                                        remoteVidRef={remoteVidRef}
+                                        speaking={remoteSpeaking}
+                                        onContextMenu={e => openContextMenu(e, 'remote')}
+                                        forceHideVideo={remoteVideoHidden}
+                                        mutedForYou={remoteMutedForMe}
+                                    />
+                                    <VideoTile
+                                        isLocal={true}
+                                        expanded={false}
+                                        local={local}
+                                        remote={remote}
+                                        cam={cam}
+                                        mic={mic}
+                                        remoteCam={remoteCam}
+                                        remoteMic={remoteMic}
+                                        sharing={screenSharing}
+                                        name={name}
+                                        other={other}
+                                        localVidRef={localVidRef}
+                                        remoteVidRef={remoteVidRef}
+                                        speaking={localSpeaking}
+                                        onContextMenu={e => openContextMenu(e, 'local')}
+                                        forceHideVideo={localVideoHidden}
+                                    />
+                                </div>
+
+                                <div className="shrink-0">
                                     {!local ? (
-                                        <div className="flex items-center gap-3">
+                                        <div className="grid grid-cols-2 gap-2">
                                             <button
-                                                className="flex items-center gap-2 rounded-full bg-cocoa-800/90 backdrop-blur px-5 py-2.5 text-xs font-bold text-ember-100/70 hover:bg-cocoa-700 disabled:opacity-40 transition-all"
+                                                className="w-full rounded-full bg-cocoa-800 ring-1 ring-ember-100/10 py-2.5 text-xs font-bold text-ember-100/70 hover:bg-cocoa-700 disabled:opacity-40 transition-colors"
                                                 disabled={busy}
                                                 onClick={() => startMedia(false)}
                                             >
-                                                <i className="fa-solid fa-microphone" />
-                                                voice only
+                                                <i className="fa-solid fa-microphone mr-1" />
+                                                voice
                                             </button>
                                             <button
-                                                className="flex items-center gap-2 rounded-full bg-ember-400/90 backdrop-blur px-5 py-2.5 text-xs font-bold text-white hover:bg-ember-500 disabled:opacity-40 transition-all"
+                                                className="w-full rounded-full bg-ember-400 py-2.5 text-xs font-bold text-white hover:bg-ember-500 disabled:opacity-40 transition-colors"
                                                 disabled={busy}
                                                 onClick={() => startMedia(true)}
                                             >
-                                                <i className="fa-solid fa-video" />
-                                                join with camera
+                                                <i className="fa-solid fa-video mr-1" />
+                                                camera
                                             </button>
                                         </div>
                                     ) : (
-                                        <div className="flex items-center gap-2 rounded-full bg-cocoa-900/80 backdrop-blur px-4 py-2.5">
-                                            <button
-                                                onClick={toggleMic}
-                                                title="Toggle mic (M)"
-                                                className={`flex shrink-0 items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
-                                            >
-                                                <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
-                                            </button>
-                                            <button
-                                                onClick={toggleCam}
-                                                disabled={screenSharing}
-                                                title="Toggle camera (V)"
-                                                className={`flex shrink-0 items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30'}`}
-                                            >
-                                                <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
-                                            </button>
+                                        <div className="flex flex-col gap-2">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button
+                                                    onClick={toggleMic}
+                                                    title="Toggle mic (M)"
+                                                    className={`flex w-full items-center justify-center rounded-full py-2.5 text-sm transition-colors ${mic ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
+                                                >
+                                                    <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'} w-4 text-center`} />
+                                                </button>
+                                                <button
+                                                    onClick={toggleCam}
+                                                    disabled={screenSharing}
+                                                    title="Toggle camera (V)"
+                                                    className={`flex w-full items-center justify-center rounded-full py-2.5 text-sm transition-colors disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
+                                                >
+                                                    <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'} w-4 text-center`} />
+                                                </button>
+                                            </div>
                                             {(mics.length > 1 || speakers.length > 1) && (
-                                                <>
-                                                    <div className="w-px h-5 bg-ember-100/10 mx-1" />
+                                                <div className="flex flex-col gap-1.5">
                                                     {mics.length > 1 && (
                                                         <DeviceDropdown
                                                             icon="fa-solid fa-microphone"
                                                             value={micDevice}
                                                             options={mics}
-                                                            fallback="Default mic"
+                                                            fallback="Default microphone"
                                                             onChange={switchMic}
                                                             disabled={busy}
                                                         />
@@ -1207,13 +1285,13 @@ export const Room = ({ peer, name, leave }: Props) => {
                                                             disabled={busy}
                                                         />
                                                     )}
-                                                </>
+                                                </div>
                                             )}
                                         </div>
                                     )}
                                 </div>
                             </div>
-                        </div>
+                        </SidePanel>
 
                         {activityOpen && (
                             <main className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
@@ -1369,6 +1447,21 @@ export const Room = ({ peer, name, leave }: Props) => {
                         )}
                     </>
                 )}
+
+                <SidePanel open={messagesOpen} width={320} side="right">
+                    <Messages
+                        messages={messages}
+                        name={name}
+                        other={other}
+                        left={left}
+                        otherTyping={otherTyping}
+                        draft={draft}
+                        onDraftChange={handleDraftChange}
+                        onSend={sendMsg}
+                        onSendGift={sendGift}
+                        onBlur={stopTyping}
+                    />
+                </SidePanel>
             </div>
         </div>
     )

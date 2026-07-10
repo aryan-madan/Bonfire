@@ -24,7 +24,6 @@ export const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCa
     const hasMic = isLocal ? mic : remoteMic
     const displayName = isLocal ? name : (other || 'connecting...')
     const avatarBg = isLocal ? 'bg-ember-400' : 'bg-mint-300'
-    const avatarGlow = isLocal ? 'rgba(251,146,60,0.15)' : 'rgba(110,231,183,0.15)'
     const avatarSize = expanded ? 'h-20 w-20 text-xl' : 'h-14 w-14 text-base'
 
     return (
@@ -53,7 +52,6 @@ export const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCa
                         <>
                             <div
                                 className={`${avatarSize} rounded-full grid place-items-center font-bold text-white ${avatarBg} ${speaking ? 'ring-2 ring-mint-300' : ''}`}
-                                style={expanded ? { boxShadow: `0 0 60px ${avatarGlow}` } : undefined}
                             >
                                 {(!isLocal && !other) ? <i className="fa-solid fa-user" /> : av(displayName)}
                             </div>
