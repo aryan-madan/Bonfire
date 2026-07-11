@@ -102,17 +102,20 @@ export const EndedScreen = ({ open, otherName, onLeave, onDismiss }: {
     )
 }
 
-export const TileContextMenu = ({ menu, remoteName, remoteVolume, remoteMuted, remoteHidden, localHidden, onSetVolume, onToggleMute, onToggleHideRemote, onToggleHideLocal, onClose }: {
+export const TileContextMenu = ({ menu, remoteName, remoteVolume, remoteMuted, remoteHidden, localHidden, pipSupported, pipActive, onSetVolume, onToggleMute, onToggleHideRemote, onToggleHideLocal, onTogglePip, onClose }: {
     menu: ContextMenuState
     remoteName: string
     remoteVolume: number
     remoteMuted: boolean
     remoteHidden: boolean
     localHidden: boolean
+    pipSupported: boolean
+    pipActive: boolean
     onSetVolume: (v: number) => void
     onToggleMute: () => void
     onToggleHideRemote: () => void
     onToggleHideLocal: () => void
+    onTogglePip: () => void
     onClose: () => void
 }) => {
     const menuRef = useRef<HTMLDivElement>(null)
@@ -176,6 +179,18 @@ export const TileContextMenu = ({ menu, remoteName, remoteVolume, remoteMuted, r
                         <i className={`fa-solid ${remoteHidden ? 'fa-eye' : 'fa-eye-slash'} w-4 shrink-0 text-center text-[0.65rem]`} />
                         {remoteHidden ? 'show their video' : 'hide their video'}
                     </button>
+                    {pipSupported && (
+                        <>
+                            <div className="my-1 h-px bg-white/[0.06]" />
+                            <button
+                                onClick={() => { onTogglePip(); onClose() }}
+                                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[12px] font-bold transition-colors ${pipActive ? 'bg-berry-300/15 text-berry-300' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
+                            >
+                                <i className={`fa-solid ${pipActive ? 'fa-down-left-and-up-right-to-center' : 'fa-up-right-and-down-left-from-center'} w-4 shrink-0 text-center text-[0.65rem]`} />
+                                {pipActive ? 'close popout' : 'pop out call'}
+                            </button>
+                        </>
+                    )}
                 </>
             ) : (
                 <button

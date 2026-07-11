@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { av } from '../call/Video.tsx'
 import { TypingDots } from '../call/Controls'
 
@@ -7,7 +7,6 @@ export interface Message {
     sender: string
     text: string
     stamp: number
-    kind?: 'text' | 'gift'
 }
 
 interface Group {
@@ -16,24 +15,18 @@ interface Group {
     texts: string[]
     mine: boolean
     stamp: number
-    kind: 'text' | 'gift'
 }
 
 const toGroups = (messages: Message[], name: string): Group[] => {
     const groups: Group[] = []
     for (const m of messages) {
-        const kind = m.kind ?? 'text'
         const mine = m.sender === name
-        if (kind === 'gift') {
-            groups.push({ id: m.id, sender: m.sender, texts: [m.text], mine, stamp: m.stamp, kind: 'gift' })
-            continue
-        }
         const last = groups[groups.length - 1]
-        if (last && last.kind === 'text' && last.mine === mine && m.stamp - last.stamp < 120000) {
+        if (last && last.mine === mine && m.stamp - last.stamp < 120000) {
             last.texts.push(m.text)
             last.stamp = m.stamp
         } else {
-            groups.push({ id: m.id, sender: m.sender, texts: [m.text], mine, stamp: m.stamp, kind: 'text' })
+            groups.push({ id: m.id, sender: m.sender, texts: [m.text], mine, stamp: m.stamp })
         }
     }
     return groups
@@ -84,40 +77,6 @@ const renderMessageText = (text: string, mine: boolean, senderName: string) => {
     return nodes
 }
 
-const GiftBubble = ({ text, mine, senderName, opened, onOpen }: {
-    text: string
-    mine: boolean
-    senderName: string
-    opened: boolean
-    onOpen: () => void
-}) => (
-    <button
-        onClick={onOpen}
-        disabled={opened}
-        className={`w-56 overflow-hidden rounded-[1.15rem] p-4 text-left transition-all duration-300 ${mine ? 'bg-ember-400 text-white' : 'bg-cocoa-800 text-ember-50'
-            } ${opened ? 'cursor-default' : 'cursor-pointer active:scale-95'}`}
-    >
-        <div
-            className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ${opened ? 'max-h-0 opacity-0 -mb-2' : 'max-h-16 opacity-100'
-                }`}
-        >
-            <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${mine ? 'bg-black/15' : 'bg-ember-400/15'}`}>
-                <i className={`fa-solid fa-gift text-sm ${mine ? 'text-white' : 'text-ember-400'}`} />
-            </div>
-            <div>
-                <p className="text-sm font-bold leading-tight">{mine ? 'you sent a gift' : `${senderName} sent a gift`}</p>
-                <p className="text-xs font-semibold opacity-60">tap to unwrap</p>
-            </div>
-        </div>
-        <div
-            className={`text-sm font-semibold leading-5 transition-all duration-300 ${opened ? 'max-h-40 opacity-100 translate-y-0' : 'max-h-0 opacity-0 translate-y-2'
-                }`}
-        >
-            {text ? text : mine ? 'you sent a gift 🎁' : `${senderName} sent you a gift 🎁`}
-        </div>
-    </button>
-)
-
 interface Props {
     messages: Message[]
     name: string
@@ -127,20 +86,16 @@ interface Props {
     draft: string
     onDraftChange: (v: string) => void
     onSend: () => void
-    onSendGift: () => void
     onBlur: () => void
 }
 
-export const Messages = ({ messages, name, other, left, otherTyping, draft, onDraftChange, onSend, onSendGift, onBlur }: Props) => {
-    const [openedGifts, setOpenedGifts] = useState<Set<string>>(new Set())
+export const Messages = ({ messages, name, other, left, otherTyping, draft, onDraftChange, onSend, onBlur }: Props) => {
     const bottom = useRef<HTMLDivElement>(null)
     const groups = toGroups(messages, name)
 
     useEffect(() => {
         bottom.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages, otherTyping])
-
-    const openGift = (id: string) => setOpenedGifts(prev => new Set(prev).add(id))
 
     return (
         <div className="flex-1 flex flex-col rounded-[1.75rem] bg-plum-900 overflow-hidden min-h-0 w-[320px]">
@@ -170,27 +125,17 @@ export const Messages = ({ messages, name, other, left, otherTyping, draft, onDr
                             <div className={`h-7 w-7 rounded-full grid place-items-center text-[0.6rem] font-bold text-white shrink-0 mb-0.5 ${g.mine ? 'bg-ember-400' : 'bg-mint-300'}`}>
                                 {av(g.sender)}
                             </div>
-                            {g.kind === 'gift' ? (
-                                <GiftBubble
-                                    text={g.texts[0]}
-                                    mine={g.mine}
-                                    senderName={g.sender}
-                                    opened={openedGifts.has(g.id)}
-                                    onOpen={() => openGift(g.id)}
-                                />
-                            ) : (
-                                <div className={`flex max-w-[78%] min-w-0 flex-col gap-1 ${g.mine ? 'items-end' : 'items-start'}`}>
-                                    {!g.mine && <span className="px-2 text-xs font-bold text-ember-100/35">{g.sender}</span>}
-                                    {g.texts.map((t, i) => (
-                                        <span
-                                            key={i}
-                                            className={`inline-block max-w-full break-all px-3 py-2 text-sm font-semibold leading-5 ${g.mine ? 'bg-ember-400 text-white' : 'bg-cocoa-800 text-ember-50'} ${bubbleRadius(g.mine, g.texts.length, i)}`}
-                                        >
-                                            {renderMessageText(t, g.mine, g.sender)}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
+                            <div className={`flex max-w-[78%] min-w-0 flex-col gap-1 ${g.mine ? 'items-end' : 'items-start'}`}>
+                                {!g.mine && <span className="px-2 text-xs font-bold text-ember-100/35">{g.sender}</span>}
+                                {g.texts.map((t, i) => (
+                                    <span
+                                        key={i}
+                                        className={`inline-block max-w-full break-all px-3 py-2 text-sm font-semibold leading-5 ${g.mine ? 'bg-ember-400 text-white' : 'bg-cocoa-800 text-ember-50'} ${bubbleRadius(g.mine, g.texts.length, i)}`}
+                                    >
+                                        {renderMessageText(t, g.mine, g.sender)}
+                                    </span>
+                                ))}
+                            </div>
                         </div>
                     ))}
                     {otherTyping && !left && (
@@ -206,13 +151,6 @@ export const Messages = ({ messages, name, other, left, otherTyping, draft, onDr
             </div>
             <div className="p-3 shrink-0">
                 <div className="flex items-center gap-2 rounded-[1.25rem] bg-cocoa-800 px-3 py-2">
-                    <button
-                        onClick={onSendGift}
-                        title="Send a gift"
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ember-100/45 hover:text-ember-400 hover:bg-ember-400/10 transition-colors"
-                    >
-                        <i className="fa-solid fa-gift text-sm" />
-                    </button>
                     <input
                         className="min-w-0 flex-1 bg-transparent px-1 text-sm font-semibold text-ember-50 placeholder:text-ember-100/30 focus:outline-none"
                         value={draft}

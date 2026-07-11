@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { pack, unpack } from '../lib/messages'
 import { type Peer, send } from '../lib/rtc'
+import { useDocPip } from '../lib/pip'
 import { Player, type PlayerHandle } from '../components/activities/Player'
 import { type Toast, ToastStack } from '../components/shared/Toast'
 import { type Item, QueueBar } from '../components/activities/Queue'
@@ -125,6 +127,7 @@ const SidePanel = ({ open, width, side, children }: {
 )
 
 export const Room = ({ peer, name, leave }: Props) => {
+    const pip = useDocPip()
     const [messages, setMessages] = useState<Message[]>([])
     const [queue, setQueue] = useState<Item[]>([])
     const [current, setCurrent] = useState<Item | null>(null)
@@ -825,16 +828,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         setDraft('')
     }
 
-    const sendGift = () => {
-        stopTyping()
-        const m: Message = { id: crypto.randomUUID(), sender: name, text: draft.trim(), stamp: Date.now(), kind: 'gift' }
-        setMessages(prev => [...prev, m])
-        bc('chat', m)
-        setDraft('')
-    }
-
     const addYT = async () => {
-        const url = input.trim()
         if (!url) return
         if (!isYT(url)) { setYtError(true); setTimeout(() => setYtError(false), 1800); return }
         const norm = normalize(url)
@@ -902,6 +896,7 @@ export const Room = ({ peer, name, leave }: Props) => {
     const confirmLeave = () => {
         setConfirmEnd(false)
         endedRef.current = true
+        pip.close()
         bc('end', null)
         setTimeout(leave, 60)
     }
@@ -984,6 +979,58 @@ export const Room = ({ peer, name, leave }: Props) => {
             <ReactionOverlay bursts={bursts} onDone={removeBurst} />
             <ActivityInfoModal activityKey={pendingActivity} onCancel={cancelActivity} onConfirm={confirmActivity} />
 
+            {pip.pipWindow && createPortal(
+                <div className="relative flex h-screen w-screen flex-col bg-cocoa-900">
+                    <div className="relative flex flex-1 min-h-0">
+                        <VideoTile
+                            isLocal={false}
+                            expanded={false}
+                            local={local}
+                            remote={remote}
+                            cam={cam}
+                            mic={mic}
+                            remoteCam={remoteCam}
+                            remoteMic={remoteMic}
+                            sharing={remoteScreenSharing}
+                            name={name}
+                            other={other}
+                            localVidRef={localVidRef}
+                            remoteVidRef={remoteVidRef}
+                            speaking={remoteSpeaking}
+                            rounded={false}
+                        />
+                    </div>
+                    <div className="flex shrink-0 items-center justify-center gap-2 bg-cocoa-900 py-2">
+                        <button
+                            onClick={toggleMic}
+                            className={`flex h-9 w-9 items-center justify-center rounded-full text-sm transition-colors ${mic ? 'bg-mint-300 text-cocoa-900' : 'bg-berry-300/20 text-berry-300'}`}
+                        >
+                            <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
+                        </button>
+                        <button
+                            onClick={toggleCam}
+                            disabled={screenSharing}
+                            className={`flex h-9 w-9 items-center justify-center rounded-full text-sm transition-colors disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900' : 'bg-berry-300/20 text-berry-300'}`}
+                        >
+                            <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
+                        </button>
+                        <button
+                            onClick={pip.close}
+                            className="flex h-9 w-9 items-center justify-center rounded-full bg-cocoa-800 text-ember-100/60 hover:text-ember-100"
+                        >
+                            <i className="fa-solid fa-down-left-and-up-right-to-center" />
+                        </button>
+                        <button
+                            onClick={requestEnd}
+                            className="flex h-9 w-9 items-center justify-center rounded-full bg-berry-300 text-white hover:bg-berry-400"
+                        >
+                            <i className="fa-solid fa-phone-slash" />
+                        </button>
+                    </div>
+                </div>,
+                pip.pipWindow.document.body
+            )}
+
             <header className="flex items-center gap-2 px-3 pt-3 pb-0 shrink-0 h-14">
                 <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     <span className="text-sm font-bold text-ember-50 ml-2">bonfire</span>
@@ -1040,10 +1087,13 @@ export const Room = ({ peer, name, leave }: Props) => {
                     remoteMuted={remoteMutedForMe}
                     remoteHidden={remoteVideoHidden}
                     localHidden={localVideoHidden}
+                    pipSupported={pip.isSupported}
+                    pipActive={!!pip.pipWindow}
                     onSetVolume={v => setRemoteVolume(v)}
                     onToggleMute={() => setRemoteMutedForMe(v => !v)}
                     onToggleHideRemote={() => setRemoteVideoHidden(v => !v)}
                     onToggleHideLocal={() => setLocalVideoHidden(v => !v)}
+                    onTogglePip={() => (pip.pipWindow ? pip.close() : pip.open())}
                     onClose={() => setContextMenu(null)}
                 />
             )}
@@ -1458,7 +1508,6 @@ export const Room = ({ peer, name, leave }: Props) => {
                         draft={draft}
                         onDraftChange={handleDraftChange}
                         onSend={sendMsg}
-                        onSendGift={sendGift}
                         onBlur={stopTyping}
                     />
                 </SidePanel>
