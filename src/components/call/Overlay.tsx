@@ -151,19 +151,28 @@ export const TileContextMenu = ({ menu, remoteName, remoteVolume, remoteMuted, r
                     <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-ember-100/30 truncate">
                         {remoteName || 'this user'}
                     </div>
-                    {[100, 150, 200, 300].map(v => (
-                        <button
-                            key={v}
-                            onClick={() => { onSetVolume(v); onClose() }}
-                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[12px] font-bold transition-colors ${remoteVolume === v && !remoteMuted ? 'bg-cocoa-800 text-ember-50' : 'text-ember-100/60 hover:bg-cocoa-800 hover:text-ember-50'}`}
-                        >
+                    <div className="px-3 py-2">
+                        <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold text-ember-100/60">
                             <span>
-                                <i className="fa-solid fa-volume-high mr-2 text-[0.6rem]" />
-                                volume {v}%
+                                <i className="fa-solid fa-volume-high mr-1.5 text-[0.6rem]" />
+                                volume
                             </span>
-                            {remoteVolume === v && !remoteMuted && <i className="fa-solid fa-check text-[0.6rem]" />}
-                        </button>
-                    ))}
+                            <span>{remoteMuted ? 'muted' : `${remoteVolume}%`}</span>
+                        </div>
+                        <input
+                            type="range"
+                            min={0}
+                            max={300}
+                            step={5}
+                            value={remoteMuted ? 0 : remoteVolume}
+                            onChange={e => {
+                                if (remoteMuted) onToggleMute()
+                                onSetVolume(Number(e.target.value))
+                            }}
+                            style={{ accentColor: '#fb923c' }}
+                            className="h-1.5 w-full cursor-pointer rounded-full bg-cocoa-800"
+                        />
+                    </div>
                     <div className="my-1 h-px bg-white/[0.06]" />
                     <button
                         onClick={() => { onToggleMute(); onClose() }}

@@ -43,6 +43,7 @@ Experience Bonfire [here.](https://usebonfire.vercel.app/)
 - prototyping video calls
 - photobooth
 - whiteboard bugs
+- help with chimes
 
 Made with ❤️ by Ary<br>
 Love to the point of creation

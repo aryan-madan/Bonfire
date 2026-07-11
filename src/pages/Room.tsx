@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { pack, unpack } from '../lib/messages'
 import { type Peer, send } from '../lib/rtc'
 import { useDocPip } from '../lib/pip'
+import { playChime } from '../lib/chime'
+import { Pip } from '../components/call/Pip'
 import { Player, type PlayerHandle } from '../components/activities/Player'
 import { type Toast, ToastStack } from '../components/shared/Toast'
 import { type Item, QueueBar } from '../components/activities/Queue'
@@ -277,7 +278,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         let silenceTimer: number | null = null
         let stopped = false
         const tick = () => {
-            if (stopped) return
+            if (stopped || document.hidden) { raf = 0; return }
             analyser.getByteTimeDomainData(data)
             let sum = 0
             for (let i = 0; i < data.length; i++) {
@@ -293,10 +294,19 @@ export const Room = ({ peer, name, leave }: Props) => {
             }
             raf = requestAnimationFrame(tick)
         }
+        const onVisibility = () => {
+            if (document.hidden) {
+                setSpeaking(false)
+            } else if (!raf && !stopped) {
+                raf = requestAnimationFrame(tick)
+            }
+        }
+        document.addEventListener('visibilitychange', onVisibility)
         tick()
         return () => {
             stopped = true
             cancelAnimationFrame(raf)
+            document.removeEventListener('visibilitychange', onVisibility)
             if (silenceTimer) window.clearTimeout(silenceTimer)
             setSpeaking(false)
             try { source.disconnect() } catch { }
@@ -387,6 +397,7 @@ export const Room = ({ peer, name, leave }: Props) => {
             setLeft(true)
             setRemoteScreenSharing(false)
             setRoomEnded(true)
+            void playChime(ensureAudioCtx(), 'end')
         }
         if (msg.kind === 'whiteboard-stroke') {
             const stroke = msg.payload as Stroke
@@ -406,7 +417,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         if (msg.kind === 'name') {
             const incoming = (msg.payload as { name: string }).name
             setOther(prev => {
-                if (!prev) toast(`${incoming} joined`, 'success')
+                if (!prev) { toast(`${incoming} joined`, 'success'); void playChime(ensureAudioCtx(), 'join') }
                 return incoming
             })
             setLeft(false)
@@ -434,7 +445,7 @@ export const Room = ({ peer, name, leave }: Props) => {
             setLeft(true)
             setOtherTyping(false)
             setRemoteScreenSharing(false)
-            if (!endedRef.current) toast(`${otherRef.current || 'they'} disconnected`, 'error')
+            if (!endedRef.current) { toast(`${otherRef.current || 'they'} disconnected`, 'error'); void playChime(ensureAudioCtx(), 'leave') }
         }
         const handleNegotiationNeeded = () => { void negotiate() }
         const handleConnectionStateChange = () => {
@@ -462,7 +473,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                 timer.current = window.setTimeout(() => {
                     if (conn.connectionState === 'disconnected') {
                         setLeft(true)
-                        if (!endedRef.current) toast(`${otherRef.current || 'they'} disconnected`, 'error')
+                        if (!endedRef.current) { toast(`${otherRef.current || 'they'} disconnected`, 'error'); void playChime(ensureAudioCtx(), 'leave') }
                     }
                     timer.current = null
                 }, 30000)
@@ -627,6 +638,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         setBusy(true)
         ensureAudioCtx()
         try {
+            const isFirstJoin = !localRef.current
             let stream = localRef.current
             if (!stream) {
                 stream = await navigator.mediaDevices.getUserMedia({
@@ -638,12 +650,13 @@ export const Room = ({ peer, name, leave }: Props) => {
                 const vid = await navigator.mediaDevices.getUserMedia({ video: true })
                 vid.getVideoTracks().forEach(t => stream?.addTrack(t))
             }
+            const muteOnJoin = isFirstJoin && withVideo
             for (const track of stream.getTracks()) {
                 if (!trackIds.current.has(track.id)) {
                     peer.conn.addTrack(track, stream)
                     trackIds.current.add(track.id)
                 }
-                track.enabled = true
+                track.enabled = track.kind === 'audio' && muteOnJoin ? false : true
             }
             if (screenSharing) {
                 stream.getVideoTracks().forEach(t => { t.enabled = false })
@@ -656,6 +669,7 @@ export const Room = ({ peer, name, leave }: Props) => {
             setMic(nextMic)
             setCam(nextCam)
             bc('media-state', { micOn: nextMic, camOn: nextCam, screenOn: screenSharing })
+            if (muteOnJoin) toast('joined muted — tap mic to unmute', 'info')
         } catch {
             toast('camera or microphone permission was blocked', 'error')
         } finally {
@@ -700,17 +714,18 @@ export const Room = ({ peer, name, leave }: Props) => {
     }
 
     const toggleMic = () => {
-        ensureAudioCtx()
+        const ctx = ensureAudioCtx()
         const stream = localRef.current
         if (!stream?.getAudioTracks().length) { void startMedia(false); return }
         const next = !mic
         stream.getAudioTracks().forEach(t => { t.enabled = next })
         setMic(next)
         bc('media-state', { micOn: next, camOn: cam })
+        void playChime(ctx, next ? 'unmute' : 'mute')
     }
 
     const toggleCam = () => {
-        ensureAudioCtx()
+        const ctx = ensureAudioCtx()
         if (screenSharing) return
         const stream = localRef.current
         if (!stream?.getVideoTracks().length) { void startMedia(true); return }
@@ -718,6 +733,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         stream.getVideoTracks().forEach(t => { t.enabled = next })
         setCam(next)
         bc('media-state', { micOn: mic, camOn: next })
+        void playChime(ctx, next ? 'camOn' : 'camOff')
     }
 
     const startScreenShare = async (): Promise<boolean> => {
@@ -898,6 +914,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         endedRef.current = true
         pip.close()
         bc('end', null)
+        void playChime(ensureAudioCtx(), 'end')
         setTimeout(leave, 60)
     }
 
@@ -979,57 +996,26 @@ export const Room = ({ peer, name, leave }: Props) => {
             <ReactionOverlay bursts={bursts} onDone={removeBurst} />
             <ActivityInfoModal activityKey={pendingActivity} onCancel={cancelActivity} onConfirm={confirmActivity} />
 
-            {pip.pipWindow && createPortal(
-                <div className="relative flex h-screen w-screen flex-col bg-cocoa-900">
-                    <div className="relative flex flex-1 min-h-0">
-                        <VideoTile
-                            isLocal={false}
-                            expanded={false}
-                            local={local}
-                            remote={remote}
-                            cam={cam}
-                            mic={mic}
-                            remoteCam={remoteCam}
-                            remoteMic={remoteMic}
-                            sharing={remoteScreenSharing}
-                            name={name}
-                            other={other}
-                            localVidRef={localVidRef}
-                            remoteVidRef={remoteVidRef}
-                            speaking={remoteSpeaking}
-                            rounded={false}
-                        />
-                    </div>
-                    <div className="flex shrink-0 items-center justify-center gap-2 bg-cocoa-900 py-2">
-                        <button
-                            onClick={toggleMic}
-                            className={`flex h-9 w-9 items-center justify-center rounded-full text-sm transition-colors ${mic ? 'bg-mint-300 text-cocoa-900' : 'bg-berry-300/20 text-berry-300'}`}
-                        >
-                            <i className={`fa-solid ${mic ? 'fa-microphone' : 'fa-microphone-slash'}`} />
-                        </button>
-                        <button
-                            onClick={toggleCam}
-                            disabled={screenSharing}
-                            className={`flex h-9 w-9 items-center justify-center rounded-full text-sm transition-colors disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900' : 'bg-berry-300/20 text-berry-300'}`}
-                        >
-                            <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
-                        </button>
-                        <button
-                            onClick={pip.close}
-                            className="flex h-9 w-9 items-center justify-center rounded-full bg-cocoa-800 text-ember-100/60 hover:text-ember-100"
-                        >
-                            <i className="fa-solid fa-down-left-and-up-right-to-center" />
-                        </button>
-                        <button
-                            onClick={requestEnd}
-                            className="flex h-9 w-9 items-center justify-center rounded-full bg-berry-300 text-white hover:bg-berry-400"
-                        >
-                            <i className="fa-solid fa-phone-slash" />
-                        </button>
-                    </div>
-                </div>,
-                pip.pipWindow.document.body
-            )}
+            <Pip
+                pipWindow={pip.pipWindow}
+                local={local}
+                remote={remote}
+                cam={cam}
+                mic={mic}
+                remoteCam={remoteCam}
+                remoteMic={remoteMic}
+                remoteScreenSharing={remoteScreenSharing}
+                screenSharing={screenSharing}
+                name={name}
+                other={other}
+                localVidRef={localVidRef}
+                remoteVidRef={remoteVidRef}
+                remoteSpeaking={remoteSpeaking}
+                onToggleMic={toggleMic}
+                onToggleCam={toggleCam}
+                onClose={pip.close}
+                onEnd={confirmLeave}
+            />
 
             <header className="flex items-center gap-2 px-3 pt-3 pb-0 shrink-0 h-14">
                 <div className="flex items-center gap-2.5 flex-1 min-w-0">

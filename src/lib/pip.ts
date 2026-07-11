@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-interface DocPipWindow extends Window {
+export interface DocPipWindow extends Window {
     document: Document
 }
 
