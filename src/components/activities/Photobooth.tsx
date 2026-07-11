@@ -280,12 +280,13 @@ interface Props {
     otherName: string
     onLeave: () => void
     onRequestCapture: () => void
+    onShutter: () => void
     remoteTrigger: number
 }
 
 const MAX_SHOTS = 4
 
-export const Photobooth = ({ local, remote, myName, otherName, onLeave, onRequestCapture, remoteTrigger }: Props) => {
+export const Photobooth = ({ local, remote, myName, otherName, onLeave, onRequestCapture, onShutter, remoteTrigger }: Props) => {
     const localCutout = useCutout(local)
     const remoteCutout = useCutout(remote)
     const outputRef = useRef<HTMLCanvasElement>(null)
@@ -384,7 +385,6 @@ export const Photobooth = ({ local, remote, myName, otherName, onLeave, onReques
         }
         loop()
         return () => cancelAnimationFrame(rafRef.current)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bgIndex, mySide])
 
     const captureFrame = (): string | null => {
@@ -405,6 +405,7 @@ export const Photobooth = ({ local, remote, myName, otherName, onLeave, onReques
                 if (countdownRef.current) window.clearInterval(countdownRef.current)
                 countdownRef.current = null
                 setCountdown(null)
+                onShutter()
                 const shot = captureFrame()
                 if (shot) setShots(prev => [...prev, shot].slice(0, MAX_SHOTS))
                 return
@@ -424,7 +425,6 @@ export const Photobooth = ({ local, remote, myName, otherName, onLeave, onReques
         lastRemoteTrigger.current = remoteTrigger
         if (countdownRef.current || shots.length >= MAX_SHOTS) return
         runCountdown()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [remoteTrigger])
 
     useEffect(() => () => {

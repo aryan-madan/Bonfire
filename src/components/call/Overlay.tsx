@@ -146,6 +146,39 @@ export const TileContextMenu = ({ menu, remoteName, remoteVolume, remoteMuted, r
             className="z-[9999] w-52 rounded-2xl bg-plum-900 p-1.5 shadow-2xl ring-1 ring-white/[0.08]"
             onContextMenu={e => e.preventDefault()}
         >
+            <style>{`
+                .slider {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    height: 4px;
+                    border-radius: 999px;
+                    background: linear-gradient(to right, #fb923c var(--pct, 0%), rgba(255,255,255,0.1) var(--pct, 0%));
+                    outline: none;
+                }
+                .slider::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                    height: 13px;
+                    width: 13px;
+                    border-radius: 50%;
+                    background: #fff;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 3px rgba(251,146,60,0.3);
+                    cursor: pointer;
+                }
+                .slider::-moz-range-thumb {
+                    height: 13px;
+                    width: 13px;
+                    border: none;
+                    border-radius: 50%;
+                    background: #fff;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 3px rgba(251,146,60,0.3);
+                    cursor: pointer;
+                }
+                .slider::-moz-range-track {
+                    height: 4px;
+                    border-radius: 999px;
+                    background: transparent;
+                }
+            `}</style>
             {menu.target === 'remote' ? (
                 <>
                     <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-ember-100/30 truncate">
@@ -169,8 +202,8 @@ export const TileContextMenu = ({ menu, remoteName, remoteVolume, remoteMuted, r
                                 if (remoteMuted) onToggleMute()
                                 onSetVolume(Number(e.target.value))
                             }}
-                            style={{ accentColor: '#fb923c' }}
-                            className="h-1.5 w-full cursor-pointer rounded-full bg-cocoa-800"
+                            style={{ '--pct': `${(remoteMuted ? 0 : remoteVolume) / 3}%` } as React.CSSProperties}
+                            className="slider w-full cursor-pointer"
                         />
                     </div>
                     <div className="my-1 h-px bg-white/[0.06]" />

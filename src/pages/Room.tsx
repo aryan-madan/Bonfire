@@ -362,7 +362,10 @@ export const Room = ({ peer, name, leave }: Props) => {
 
     const receive = useCallback((raw: string) => {
         const msg = unpack(raw)
-        if (msg.kind === 'chat') setMessages(prev => [...prev, msg.payload as Message])
+        if (msg.kind === 'chat') {
+            setMessages(prev => [...prev, msg.payload as Message])
+            void playChime(ensureAudioCtx(), 'messageReceive')
+        }
         if (msg.kind === 'queue') setQueue(msg.payload as Item[])
         if (msg.kind === 'next') setCurrent(msg.payload as Item | null)
         if (msg.kind === 'play') player.current?.playVideo()
@@ -391,6 +394,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         if (msg.kind === 'reaction') {
             const { emoji } = msg.payload as { emoji: string }
             setBursts(prev => [...prev, { id: crypto.randomUUID(), emoji }])
+            void playChime(ensureAudioCtx(), 'reactionReceive')
         }
         if (msg.kind === 'end') {
             endedRef.current = true
@@ -598,11 +602,12 @@ export const Room = ({ peer, name, leave }: Props) => {
                 if (!prev.running || !prev.endsAt || Date.now() < prev.endsAt) return prev
                 const next = nextAfter(prev)
                 bc('study-state', next)
+                void playChime(ensureAudioCtx(), next.mode === 'focus' ? 'focusStart' : 'breakStart')
                 return next
             })
         }, 1000)
         return () => window.clearInterval(id)
-    }, [study.running, study.endsAt, bc])
+    }, [study.running, study.endsAt, bc, ensureAudioCtx])
 
     useEffect(() => {
         const audio = remoteAudioEl.current as SinkAudio | null
@@ -842,6 +847,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         setMessages(prev => [...prev, m])
         bc('chat', m)
         setDraft('')
+        void playChime(ensureAudioCtx(), 'messageSend')
     }
 
     const addYT = async () => {
@@ -854,6 +860,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         setQueue(next)
         bc('queue', next)
         setInput('')
+        void playChime(ensureAudioCtx(), 'queueAdd')
         if (!current) advance(item, next)
     }
 
@@ -871,6 +878,7 @@ export const Room = ({ peer, name, leave }: Props) => {
     }
 
     const skip = () => {
+        void playChime(ensureAudioCtx(), 'skip')
         if (!queue.length) { setCurrent(null); bc('next', null); return }
         advance(queue[0], queue)
     }
@@ -926,6 +934,7 @@ export const Room = ({ peer, name, leave }: Props) => {
     const fireReaction = (emoji: string) => {
         setBursts(prev => [...prev, { id: crypto.randomUUID(), emoji }])
         bc('reaction', { emoji })
+        void playChime(ensureAudioCtx(), 'reactionSend')
     }
 
     const updateStroke = (stroke: Stroke) => {
@@ -947,6 +956,7 @@ export const Room = ({ peer, name, leave }: Props) => {
     const clearBoard = () => {
         setStrokes([])
         bc('whiteboard-clear', null)
+        void playChime(ensureAudioCtx(), 'whiteboardClear')
     }
 
     const removeBurst = (id: string) => {
@@ -981,6 +991,10 @@ export const Room = ({ peer, name, leave }: Props) => {
 
     const requestPhotoboothCapture = () => {
         bc('photobooth-capture', null)
+    }
+
+    const playShutter = () => {
+        void playChime(ensureAudioCtx(), 'shutter')
     }
 
     const label = left ? `${other || 'they'} left` : other ? `${name} + ${other}` : 'waiting...'
@@ -1106,46 +1120,71 @@ export const Room = ({ peer, name, leave }: Props) => {
                             }
                         `}</style>
                         <div
-                            className="relative flex flex-1 gap-3 min-h-0 rounded-[1.75rem] overflow-hidden"
+                            className="group relative flex flex-1 gap-3 min-h-0 rounded-[1.75rem] overflow-hidden"
                             style={{ animation: 'callExpand 380ms cubic-bezier(0.4,0,0.2,1) both' }}
                         >
-                            <VideoTile
-                                isLocal={false}
-                                expanded={true}
-                                local={local}
-                                remote={remote}
-                                cam={cam}
-                                mic={mic}
-                                remoteCam={remoteCam}
-                                remoteMic={remoteMic}
-                                sharing={remoteScreenSharing}
-                                name={name}
-                                other={other}
-                                localVidRef={localVidRef}
-                                remoteVidRef={remoteVidRef}
-                                speaking={remoteSpeaking}
-                                onContextMenu={e => openContextMenu(e, 'remote')}
-                                forceHideVideo={remoteVideoHidden}
-                                mutedForYou={remoteMutedForMe}
-                            />
-                            <VideoTile
-                                isLocal={true}
-                                expanded={true}
-                                local={local}
-                                remote={remote}
-                                cam={cam}
-                                mic={mic}
-                                remoteCam={remoteCam}
-                                remoteMic={remoteMic}
-                                sharing={screenSharing}
-                                name={name}
-                                other={other}
-                                localVidRef={localVidRef}
-                                remoteVidRef={remoteVidRef}
-                                speaking={localSpeaking}
-                                onContextMenu={e => openContextMenu(e, 'local')}
-                                forceHideVideo={localVideoHidden}
-                            />
+                            {!remoteVideoHidden && (
+                                <VideoTile
+                                    isLocal={false}
+                                    expanded={true}
+                                    local={local}
+                                    remote={remote}
+                                    cam={cam}
+                                    mic={mic}
+                                    remoteCam={remoteCam}
+                                    remoteMic={remoteMic}
+                                    sharing={remoteScreenSharing}
+                                    name={name}
+                                    other={other}
+                                    localVidRef={localVidRef}
+                                    remoteVidRef={remoteVidRef}
+                                    speaking={remoteSpeaking}
+                                    onContextMenu={e => openContextMenu(e, 'remote')}
+                                    mutedForYou={remoteMutedForMe}
+                                />
+                            )}
+                            {!localVideoHidden && (
+                                <VideoTile
+                                    isLocal={true}
+                                    expanded={true}
+                                    local={local}
+                                    remote={remote}
+                                    cam={cam}
+                                    mic={mic}
+                                    remoteCam={remoteCam}
+                                    remoteMic={remoteMic}
+                                    sharing={screenSharing}
+                                    name={name}
+                                    other={other}
+                                    localVidRef={localVidRef}
+                                    remoteVidRef={remoteVidRef}
+                                    speaking={localSpeaking}
+                                    onContextMenu={e => openContextMenu(e, 'local')}
+                                />
+                            )}
+
+                            {(localVideoHidden || remoteVideoHidden) && (
+                                <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                                    {localVideoHidden && (
+                                        <button
+                                            onClick={() => setLocalVideoHidden(false)}
+                                            title="show my preview"
+                                            className="grid h-7 w-7 place-items-center rounded-full bg-black/50 backdrop-blur-md text-white/70 hover:bg-black/70 hover:text-white transition-colors"
+                                        >
+                                            <i className="fa-solid fa-eye text-[0.65rem]" />
+                                        </button>
+                                    )}
+                                    {remoteVideoHidden && (
+                                        <button
+                                            onClick={() => setRemoteVideoHidden(false)}
+                                            title="show their video"
+                                            className="grid h-7 w-7 place-items-center rounded-full bg-black/50 backdrop-blur-md text-white/70 hover:bg-black/70 hover:text-white transition-colors"
+                                        >
+                                            <i className="fa-solid fa-eye text-[0.65rem]" />
+                                        </button>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
                                 {!local ? (
@@ -1220,44 +1259,68 @@ export const Room = ({ peer, name, leave }: Props) => {
                             <div className="flex h-full min-h-0 flex-col gap-3 rounded-[1.75rem] bg-plum-900 p-3">
                                 <h2 className="shrink-0 px-1 text-sm font-bold text-ember-50">call</h2>
 
-                                <div className="flex flex-1 min-h-0 flex-col gap-3">
-                                    <VideoTile
-                                        isLocal={false}
-                                        expanded={false}
-                                        local={local}
-                                        remote={remote}
-                                        cam={cam}
-                                        mic={mic}
-                                        remoteCam={remoteCam}
-                                        remoteMic={remoteMic}
-                                        sharing={remoteScreenSharing}
-                                        name={name}
-                                        other={other}
-                                        localVidRef={localVidRef}
-                                        remoteVidRef={remoteVidRef}
-                                        speaking={remoteSpeaking}
-                                        onContextMenu={e => openContextMenu(e, 'remote')}
-                                        forceHideVideo={remoteVideoHidden}
-                                        mutedForYou={remoteMutedForMe}
-                                    />
-                                    <VideoTile
-                                        isLocal={true}
-                                        expanded={false}
-                                        local={local}
-                                        remote={remote}
-                                        cam={cam}
-                                        mic={mic}
-                                        remoteCam={remoteCam}
-                                        remoteMic={remoteMic}
-                                        sharing={screenSharing}
-                                        name={name}
-                                        other={other}
-                                        localVidRef={localVidRef}
-                                        remoteVidRef={remoteVidRef}
-                                        speaking={localSpeaking}
-                                        onContextMenu={e => openContextMenu(e, 'local')}
-                                        forceHideVideo={localVideoHidden}
-                                    />
+                                <div className="group relative flex flex-1 min-h-0 flex-col gap-3">
+                                    {!remoteVideoHidden && (
+                                        <VideoTile
+                                            isLocal={false}
+                                            expanded={false}
+                                            local={local}
+                                            remote={remote}
+                                            cam={cam}
+                                            mic={mic}
+                                            remoteCam={remoteCam}
+                                            remoteMic={remoteMic}
+                                            sharing={remoteScreenSharing}
+                                            name={name}
+                                            other={other}
+                                            localVidRef={localVidRef}
+                                            remoteVidRef={remoteVidRef}
+                                            speaking={remoteSpeaking}
+                                            onContextMenu={e => openContextMenu(e, 'remote')}
+                                            mutedForYou={remoteMutedForMe}
+                                        />
+                                    )}
+                                    {!localVideoHidden && (
+                                        <VideoTile
+                                            isLocal={true}
+                                            expanded={false}
+                                            local={local}
+                                            remote={remote}
+                                            cam={cam}
+                                            mic={mic}
+                                            remoteCam={remoteCam}
+                                            remoteMic={remoteMic}
+                                            sharing={screenSharing}
+                                            name={name}
+                                            other={other}
+                                            localVidRef={localVidRef}
+                                            remoteVidRef={remoteVidRef}
+                                            speaking={localSpeaking}
+                                            onContextMenu={e => openContextMenu(e, 'local')}
+                                        />
+                                    )}
+                                    {(localVideoHidden || remoteVideoHidden) && (
+                                        <div className="pointer-events-none absolute top-2 right-2 z-10 flex flex-col items-end gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                                            {localVideoHidden && (
+                                                <button
+                                                    onClick={() => setLocalVideoHidden(false)}
+                                                    title="show my preview"
+                                                    className="pointer-events-auto grid h-6 w-6 place-items-center rounded-full bg-black/50 backdrop-blur-md text-white/70 hover:bg-black/70 hover:text-white transition-colors"
+                                                >
+                                                    <i className="fa-solid fa-eye text-[0.55rem]" />
+                                                </button>
+                                            )}
+                                            {remoteVideoHidden && (
+                                                <button
+                                                    onClick={() => setRemoteVideoHidden(false)}
+                                                    title="show their video"
+                                                    className="pointer-events-auto grid h-6 w-6 place-items-center rounded-full bg-black/50 backdrop-blur-md text-white/70 hover:bg-black/70 hover:text-white transition-colors"
+                                                >
+                                                    <i className="fa-solid fa-eye text-[0.55rem]" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="shrink-0">
@@ -1369,6 +1432,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                                             otherName={other}
                                             onLeave={leaveActivity}
                                             onRequestCapture={requestPhotoboothCapture}
+                                            onShutter={playShutter}
                                             remoteTrigger={photoboothTrigger}
                                         />
                                     )}
