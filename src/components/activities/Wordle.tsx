@@ -102,7 +102,7 @@ const Tile = ({ ch, target, revealAt, awaitingFeedback }: {
     )
 }
 
-const GuessRow = ({ word, feedback, isActive, awaitingFeedback, shake }: {
+const GuessRow = ({ word, feedback, awaitingFeedback, shake }: {
     word: string
     feedback: LetterState[] | null
     isActive?: boolean
@@ -165,7 +165,7 @@ const emptyMyBoard: MyBoard = { guesses: [], currentGuess: '', status: 'guessing
 const emptyTheirBoard: TheirBoard = { guesses: [], status: 'guessing' }
 
 export const Wordle = ({
-    myName, otherName, onLeave,
+    otherName, onLeave,
     onSendReady, onSendGuess, onSendFeedback, onSendReset,
     remoteReadyTick, remoteGuess, remoteFeedback, remoteResetTick,
     hovered,
@@ -410,18 +410,18 @@ export const Wordle = ({
                     style={{ animation: 'resultsBackdropIn 320ms ease-out both' }}
                 >
                     <div
-                        className="flex w-full max-w-md flex-col items-center gap-6 px-8 py-10"
+                        className="flex flex-col items-center gap-3 rounded-[1.5rem] bg-plum-900 px-6 py-5 shadow-2xl"
                         style={{ animation: 'resultsCardIn 380ms cubic-bezier(0.34,1.56,0.64,1) 80ms both' }}
                     >
-                        <div className="grid grid-cols-2 gap-10 text-center">
+                        <div className="grid grid-cols-2 gap-6 text-center">
                             <div style={{ animation: 'statIn 320ms ease-out 200ms both' }}>
-                                <p className="text-xs font-bold uppercase tracking-wide text-ember-100/40">their word</p>
-                                <p className="text-3xl font-bold uppercase text-ember-50">{myRevealedWord ?? '?????'}</p>
-                                <p className="mt-1.5 text-sm font-semibold text-ember-100/50">
+                                <p className="text-[0.65rem] font-bold uppercase tracking-wide text-ember-100/40">their word</p>
+                                <p className="text-xl font-bold uppercase text-ember-50">{myRevealedWord ?? '?????'}</p>
+                                <p className="mt-1 text-xs font-semibold text-ember-100/50">
                                     {iWon ? `you: ${myBoard.guesses.length} guesses` : 'you: didn\'t get it'}
                                 </p>
                                 {myElapsedMs !== null && (
-                                    <p className="mt-1 flex items-center justify-center gap-1.5 text-xs font-bold text-ember-100/35">
+                                    <p className="mt-0.5 flex items-center justify-center gap-1 text-[0.65rem] font-bold text-ember-100/35">
                                         {fmtTime(myElapsedMs)}
                                         {firstSide === 'me' && (
                                             <i className="fa-solid fa-trophy text-mint-300/80" style={{ display: 'inline-block', animation: 'trophyPop 420ms cubic-bezier(0.34,1.56,0.64,1) 480ms both' }} />
@@ -430,13 +430,13 @@ export const Wordle = ({
                                 )}
                             </div>
                             <div style={{ animation: 'statIn 320ms ease-out 280ms both' }}>
-                                <p className="text-xs font-bold uppercase tracking-wide text-ember-100/40">your word</p>
-                                <p className="text-3xl font-bold uppercase text-ember-50">{secretWord.current}</p>
-                                <p className="mt-1.5 text-sm font-semibold text-ember-100/50">
+                                <p className="text-[0.65rem] font-bold uppercase tracking-wide text-ember-100/40">your word</p>
+                                <p className="text-xl font-bold uppercase text-ember-50">{secretWord.current}</p>
+                                <p className="mt-1 text-xs font-semibold text-ember-100/50">
                                     {theyWon ? `${otherName}: ${theirBoard.guesses.length} guesses` : `${otherName}: didn't get it`}
                                 </p>
                                 {theirElapsedMs !== null && (
-                                    <p className="mt-1 flex items-center justify-center gap-1.5 text-xs font-bold text-ember-100/35">
+                                    <p className="mt-0.5 flex items-center justify-center gap-1 text-[0.65rem] font-bold text-ember-100/35">
                                         {fmtTime(theirElapsedMs)}
                                         {firstSide === 'them' && (
                                             <i className="fa-solid fa-trophy text-mint-300/80" style={{ display: 'inline-block', animation: 'trophyPop 420ms cubic-bezier(0.34,1.56,0.64,1) 480ms both' }} />
@@ -447,7 +447,7 @@ export const Wordle = ({
                         </div>
                         <button
                             onClick={playAgain}
-                            className="rounded-full bg-ember-400 px-8 py-3 text-sm font-bold text-white hover:bg-ember-500 transition-colors"
+                            className="rounded-full bg-ember-400 px-6 py-2.5 text-xs font-bold text-white hover:bg-ember-500 transition-colors"
                             style={{ animation: 'statIn 320ms ease-out 360ms both' }}
                         >
                             <i className="fa-solid fa-rotate-right mr-2" />

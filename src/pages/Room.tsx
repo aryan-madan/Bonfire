@@ -896,9 +896,9 @@ export const Room = ({ peer, name, leave }: Props) => {
     }
 
     const addYT = async () => {
-        if (!url) return
-        if (!isYT(url)) { setYtError(true); setTimeout(() => setYtError(false), 1800); return }
-        const norm = normalize(url)
+        if (!input) return
+        if (!isYT(input)) { setYtError(true); setTimeout(() => setYtError(false), 1800); return }
+        const norm = normalize(input)
         const details = await ytDetails(norm)
         const item: Item = { id: crypto.randomUUID().slice(0, 8), url: norm, ...details }
         const next = [...queue, item]
