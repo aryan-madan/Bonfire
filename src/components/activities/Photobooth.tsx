@@ -84,6 +84,104 @@ const MASK_SMOOTHING = 0.45
 const MASK_LOW = 0.4
 const MASK_HIGH = 0.62
 
+const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.arcTo(x + w, y, x + w, y + h, r)
+    ctx.arcTo(x + w, y + h, x, y + h, r)
+    ctx.arcTo(x, y + h, x, y, r)
+    ctx.arcTo(x, y, x + w, y, r)
+    ctx.closePath()
+}
+
+// ---- Polaroid rendering helpers -------------------------------------------------
+
+// Classic instant-print proportions: a slim margin on three sides and a deep
+// caption strip along the bottom where the photo "develops" into view.
+const POLAROID_SIDE_PAD = 22
+const POLAROID_TOP_PAD = 22
+const POLAROID_BOTTOM_PAD = 96
+const POLAROID_CARD_RADIUS = 4
+const POLAROID_SHADOW_MARGIN = 26
+
+const loadImage = (src: string): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => resolve(img)
+        img.onerror = () => reject(new Error(`failed to load image: ${src}`))
+        img.src = src
+    })
+
+// The strip is drawn on a <canvas>, which doesn't pick up the page's @font-face
+// rules automatically — load the brand font into the document's font set once
+// so ctx.font = '... Pangram ...' actually resolves to it.
+let pangramFontPromise: Promise<FontFace> | null = null
+const loadPangramFont = (): Promise<FontFace> => {
+    if (pangramFontPromise) return pangramFontPromise
+    pangramFontPromise = new FontFace('Pangram', 'url(/fonts/PPPangramSansRounded-Bold.otf)', { weight: '700' })
+        .load()
+        .then(font => {
+            document.fonts.add(font)
+            return font
+        })
+    return pangramFontPromise
+}
+
+// Draws a single polaroid-style card (white frame + deep bottom margin + soft
+// drop shadow + a faint inner vignette on the photo itself) at (x, y).
+const drawPolaroidCard = (
+    ctx: CanvasRenderingContext2D,
+    img: CanvasImageSource,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    withShadow = true,
+) => {
+    ctx.save()
+    if (withShadow) {
+        ctx.shadowColor = 'rgba(20, 14, 10, 0.35)'
+        ctx.shadowBlur = 22
+        ctx.shadowOffsetY = 10
+    }
+    ctx.fillStyle = '#fbfaf6'
+    drawRoundedRect(ctx, x, y, w, h, POLAROID_CARD_RADIUS)
+    ctx.fill()
+    ctx.restore()
+
+    const innerX = x + POLAROID_SIDE_PAD
+    const innerY = y + POLAROID_TOP_PAD
+    const innerW = w - POLAROID_SIDE_PAD * 2
+    const innerH = h - POLAROID_TOP_PAD - POLAROID_BOTTOM_PAD
+
+    ctx.save()
+    drawRoundedRect(ctx, innerX, innerY, innerW, innerH, 1)
+    ctx.clip()
+    ctx.fillStyle = '#000'
+    ctx.fillRect(innerX, innerY, innerW, innerH)
+    ctx.drawImage(img, innerX, innerY, innerW, innerH)
+
+    // faint vignette so the photo reads as a print, not a screenshot
+    const vignette = ctx.createRadialGradient(
+        innerX + innerW / 2, innerY + innerH / 2, innerH * 0.35,
+        innerX + innerW / 2, innerY + innerH / 2, innerH * 0.75,
+    )
+    vignette.addColorStop(0, 'rgba(0,0,0,0)')
+    vignette.addColorStop(1, 'rgba(0,0,0,0.16)')
+    ctx.fillStyle = vignette
+    ctx.fillRect(innerX, innerY, innerW, innerH)
+    ctx.restore()
+
+    ctx.save()
+    drawRoundedRect(ctx, innerX + 0.5, innerY + 0.5, innerW - 1, innerH - 1, 1)
+    ctx.lineWidth = 1
+    ctx.strokeStyle = 'rgba(20,14,10,0.12)'
+    ctx.stroke()
+    ctx.restore()
+}
+
+// ---------------------------------------------------------------------------------
+
 const useCutout = (stream: MediaStream | null) => {
     const videoRef = useRef<HTMLVideoElement | null>(null)
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -431,55 +529,109 @@ export const Photobooth = ({ local, remote, myName, otherName, onLeave, onReques
         if (countdownRef.current) window.clearInterval(countdownRef.current)
     }, [])
 
-    const downloadOne = (dataUrl: string) => {
-        const link = document.createElement('a')
-        link.download = `bonfire-photobooth-${Date.now()}.png`
-        link.href = dataUrl
-        link.click()
+    // Single photo -> its own polaroid card, floating on a transparent PNG.
+    const downloadOne = async (dataUrl: string) => {
+        try {
+            const img = await loadImage(dataUrl)
+            const cardW = img.width + POLAROID_SIDE_PAD * 2
+            const cardH = img.height + POLAROID_TOP_PAD + POLAROID_BOTTOM_PAD
+            const canvas = document.createElement('canvas')
+            canvas.width = cardW + POLAROID_SHADOW_MARGIN * 2
+            canvas.height = cardH + POLAROID_SHADOW_MARGIN * 2
+            const ctx = canvas.getContext('2d')
+            if (!ctx) throw new Error('no context')
+            drawPolaroidCard(ctx, img, POLAROID_SHADOW_MARGIN, POLAROID_SHADOW_MARGIN, cardW, cardH)
+
+            const link = document.createElement('a')
+            link.download = `bonfire-photobooth-${Date.now()}.png`
+            link.href = canvas.toDataURL('image/png')
+            link.click()
+        } catch {
+            const link = document.createElement('a')
+            link.download = `bonfire-photobooth-${Date.now()}.png`
+            link.href = dataUrl
+            link.click()
+        }
     }
 
-    const downloadStrip = () => {
+    const downloadStrip = async () => {
         if (!shots.length) return
-        const img0 = new Image()
-        img0.onload = () => {
-            const pad = 24
-            const gap = 16
-            const cellW = img0.width
-            const cellH = img0.height
+        try {
+            const images = await Promise.all(shots.map(loadImage))
+            await loadPangramFont().catch(() => null)
+
+            const cellW = images[0].width
+            const cellH = images[0].height
+
+            // Everything below is sized relative to the photo's own width, not
+            // a fixed pixel count — so the caption and margins stay the same
+            // proportion whether the strip has 1 shot or all 4, instead of
+            // getting visually crowded out as the strip grows taller. Clamped
+            // so very large capture resolutions don't blow the caption up.
+            const scale = Math.min(1, Math.max(0.55, cellW / 900))
+
+            const outerPad = 18 * scale
+            const photoGap = 6 * scale
+            const footerH = 200 * scale
+
+            const stripW = cellW + outerPad * 2
+            const stripH = outerPad + images.length * cellH + (images.length - 1) * photoGap + footerH
+
             const stripCanvas = document.createElement('canvas')
-            stripCanvas.width = cellW + pad * 2
-            stripCanvas.height = pad * 2 + shots.length * cellH + (shots.length - 1) * gap + 60
+            stripCanvas.width = stripW
+            stripCanvas.height = stripH
             const ctx = stripCanvas.getContext('2d')
             if (!ctx) return
-            ctx.fillStyle = '#251b16'
-            ctx.fillRect(0, 0, stripCanvas.width, stripCanvas.height)
 
-            let loaded = 0
-            const images: HTMLImageElement[] = []
-            shots.forEach((src, i) => {
-                const img = new Image()
-                img.onload = () => {
-                    images[i] = img
-                    loaded += 1
-                    if (loaded === shots.length) {
-                        shots.forEach((_, idx) => {
-                            const y = pad + idx * (cellH + gap)
-                            ctx.drawImage(images[idx], pad, y, cellW, cellH)
-                        })
-                        ctx.fillStyle = 'rgba(244,161,93,0.9)'
-                        ctx.font = 'bold 28px sans-serif'
-                        ctx.textAlign = 'center'
-                        ctx.fillText('bonfire', stripCanvas.width / 2, stripCanvas.height - 20)
-                        const link = document.createElement('a')
-                        link.download = `bonfire-photobooth-strip-${Date.now()}.png`
-                        link.href = stripCanvas.toDataURL('image/png')
-                        link.click()
-                    }
-                }
-                img.src = src
+            // one flat white sheet — photos stacked with just a hair of
+            // breathing room between them, plus a slim margin around it all.
+            ctx.save()
+            drawRoundedRect(ctx, 0, 0, stripW, stripH, 14 * scale)
+            ctx.clip()
+            ctx.fillStyle = '#fbfaf6'
+            ctx.fillRect(0, 0, stripW, stripH)
+            ctx.restore()
+
+            images.forEach((img, idx) => {
+                const x = outerPad
+                const y = outerPad + idx * (cellH + photoGap)
+                ctx.drawImage(img, x, y, cellW, cellH)
             })
+
+            const footerTop = outerPad + images.length * cellH + (images.length - 1) * photoGap
+            const footerCenterY = footerTop + footerH / 2
+            const centerX = stripW / 2
+
+            // centered caption, in the brand font, in black — sized as big as
+            // will comfortably fit the strip's width
+            const maxTextWidth = stripW - outerPad * 2
+            let brandSize = 64 * scale
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillStyle = '#14100d'
+            while (brandSize > 28 * scale) {
+                ctx.font = `700 ${brandSize}px Pangram, system-ui, sans-serif`
+                if (ctx.measureText('bonfire').width <= maxTextWidth) break
+                brandSize -= 3 * scale
+            }
+            ctx.fillText('bonfire', centerX, footerCenterY - 22 * scale)
+
+            // date + time, monospace, muted
+            const now = new Date()
+            const dateStr = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+            const timeStr = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+            ctx.font = `${20 * scale}px ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace`
+            ctx.fillStyle = 'rgba(20,14,10,0.5)'
+            ctx.fillText(`${dateStr}  ·  ${timeStr}`, centerX, footerCenterY + 34 * scale)
+
+            const link = document.createElement('a')
+            link.download = `bonfire-photobooth-strip-${Date.now()}.png`
+            link.href = stripCanvas.toDataURL('image/png')
+            link.click()
+        } catch {
+            // if anything fails, fall back to just grabbing the first shot
+            void downloadOne(shots[0])
         }
-        img0.src = shots[0]
     }
 
     const removeShot = (idx: number) => {
@@ -559,7 +711,7 @@ export const Photobooth = ({ local, remote, myName, otherName, onLeave, onReques
             {bothStreaming && !modelsFailed && shots.length > 0 && (
                 <div className="absolute top-3 right-3 flex items-center gap-2">
                     <button
-                        onClick={downloadStrip}
+                        onClick={() => void downloadStrip()}
                         className="flex items-center gap-1.5 rounded-full bg-black/50 backdrop-blur-md border border-white/10 px-4 py-2 text-xs font-bold text-white/90 hover:bg-black/70 transition-colors"
                     >
                         <i className="fa-solid fa-download" />
@@ -632,7 +784,7 @@ export const Photobooth = ({ local, remote, myName, otherName, onLeave, onReques
                                 close
                             </button>
                             <button
-                                onClick={() => downloadOne(viewing)}
+                                onClick={() => void downloadOne(viewing)}
                                 className="flex-1 rounded-full bg-ember-400 py-2.5 text-xs font-bold text-white hover:bg-ember-500 transition-colors"
                             >
                                 <i className="fa-solid fa-download mr-1.5" />
