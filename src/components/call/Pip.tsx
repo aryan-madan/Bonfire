@@ -47,7 +47,6 @@ export const Pip = ({ pipWindow, local, remote, cam, mic, remoteCam, remoteMic, 
                     localVidRef={localVidRef}
                     remoteVidRef={remoteVidRef}
                     speaking={remoteSpeaking}
-                    rounded={false}
                 />
             </div>
             <div className="flex shrink-0 items-center justify-center gap-2 bg-cocoa-900 py-2">

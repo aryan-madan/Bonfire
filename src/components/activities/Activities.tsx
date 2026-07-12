@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 
-export type ActivityKey = 'youtube' | 'screenshare' | 'spades' | 'whiteboard' | 'photobooth' | 'study' | 'rmoy'
+export type ActivityKey = 'youtube' | 'screenshare' | 'spades' | 'whiteboard' | 'photobooth' | 'study' | 'rmoy' | 'wordle'
 
 export interface ActivityMeta {
     key: ActivityKey
@@ -60,30 +60,36 @@ export const ACTIVITIES: ActivityMeta[] = [
         blurb: 'Send them a song that reminds you of them.',
         disclaimer: "This opens Reminds Me of You, where you can pick a song and send it to them. The song will open in a new tab for them, and they'll be able to listen to it while still in the room. Send them a song link through chat.",
     },
+    {
+        key: 'wordle',
+        label: 'Wordle',
+        icon: 'fa-solid fa-globe',
+        blurb: 'Play the popular word guessing game together.',
+        disclaimer: "This opens Wordle, where you can play the game together. Each player will have their own game session, but you can discuss strategies and solutions.",
+    },
 ]
 
 export const ActivityMenu = ({ onPick }: { onPick: (key: ActivityKey) => void }) => (
     <div className="grid h-full place-items-center px-6">
-        <div className="w-full max-w-sm space-y-4">
+        <div className="w-full max-w-xl space-y-5">
             <div className="text-center space-y-1">
                 <h2 className="text-2xl font-bold text-ember-50">pick an activity</h2>
                 <p className="text-sm font-semibold text-ember-100/45">do something together</p>
             </div>
-            <div className="flex flex-col gap-2.5">
+            <div className="grid grid-cols-2 gap-2.5">
                 {ACTIVITIES.map(a => (
                     <button
                         key={a.key}
                         onClick={() => onPick(a.key)}
-                        className="flex items-center gap-3.5 rounded-[1.25rem] bg-cocoa-800 hover:bg-cocoa-700 px-4 py-3.5 text-left transition-colors"
+                        className="flex flex-col items-start gap-2.5 rounded-[1.25rem] border border-ember-100/10 hover:border-ember-100/20 hover:bg-cocoa-800/60 px-4 py-3.5 text-left transition-colors"
                     >
-                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-ember-400/15 text-ember-400 text-lg">
+                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ember-400/15 text-ember-400 text-sm">
                             <i className={a.icon} />
                         </div>
                         <div className="min-w-0">
                             <p className="text-sm font-bold text-ember-50">{a.label}</p>
-                            <p className="text-xs font-semibold text-ember-100/45 truncate">{a.blurb}</p>
+                            <p className="text-xs font-semibold text-ember-100/45 line-clamp-2">{a.blurb}</p>
                         </div>
-                        <i className="fa-solid fa-chevron-right ml-auto text-xs text-ember-100/25 shrink-0" />
                     </button>
                 ))}
             </div>

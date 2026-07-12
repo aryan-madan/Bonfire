@@ -18,6 +18,10 @@ export type Kind =
     | 'whiteboard-clear'
     | 'photobooth-capture'
     | 'study-state'
+    | 'wordle-ready'
+    | 'wordle-guess'
+    | 'wordle-feedback'
+    | 'wordle-reset'
 
 export interface Msg {
     kind: Kind

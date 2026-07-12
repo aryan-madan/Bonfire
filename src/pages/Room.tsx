@@ -3,6 +3,7 @@ import { pack, unpack } from '../lib/messages'
 import { type Peer, send } from '../lib/rtc'
 import { useDocPip } from '../lib/pip'
 import { playChime } from '../lib/chime'
+import { useConnectionQuality } from '../lib/quality'
 import { Pip } from '../components/call/Pip'
 import { Player, type PlayerHandle } from '../components/activities/Player'
 import { type Toast, ToastStack } from '../components/shared/Toast'
@@ -14,6 +15,7 @@ import { type Burst, ReactionOverlay, ReactionPicker } from '../components/activ
 import { Whiteboard, type Stroke } from '../components/activities/Whiteboard'
 import { Photobooth } from '../components/activities/Photobooth'
 import { StudyTogether, type StudyState, defaultStudyState, nextAfter } from '../components/activities/Study'
+import { Wordle, type LetterState, type PlayerStatus, type WordleFeedbackMsg } from '../components/activities/Wordle'
 import { type ActivityKey, ActivityMenu, ActivityInfoModal, SpadesFrame, RmoyFrame } from '../components/activities/Activities'
 import { Messages, type Message } from '../components/chat/Messages'
 
@@ -153,6 +155,10 @@ export const Room = ({ peer, name, leave }: Props) => {
     const [busy, setBusy] = useState(false)
     const [toasts, setToasts] = useState<Toast[]>([])
     const [study, setStudy] = useState<StudyState>(defaultStudyState)
+    const [wordleRemoteReadyTick, setWordleRemoteReadyTick] = useState(0)
+    const [wordleRemoteGuess, setWordleRemoteGuess] = useState<{ id: string; word: string } | null>(null)
+    const [wordleRemoteFeedback, setWordleRemoteFeedback] = useState<WordleFeedbackMsg | null>(null)
+    const [wordleRemoteResetTick, setWordleRemoteResetTick] = useState(0)
     const [videoHovered, setVideoHovered] = useState(false)
     const [callOpen, setCallOpen] = useState(true)
     const [messagesOpen, setMessagesOpen] = useState(true)
@@ -161,6 +167,7 @@ export const Room = ({ peer, name, leave }: Props) => {
     const [micDevice, setMicDevice] = useState('')
     const [speakerDevice, setSpeakerDevice] = useState('')
     const [callDuration, setCallDuration] = useState(0)
+    const [callConnected, setCallConnected] = useState(false)
     const [otherTyping, setOtherTyping] = useState(false)
     const [confirmEnd, setConfirmEnd] = useState(false)
     const [roomEnded, setRoomEnded] = useState(false)
@@ -227,6 +234,9 @@ export const Room = ({ peer, name, leave }: Props) => {
     const remoteMutedRef = useRef(false)
     const localSpeakingCleanup = useRef<(() => void) | null>(null)
     const remoteSpeakingCleanup = useRef<(() => void) | null>(null)
+    const prevActivityRef = useRef<ActivityKey | 'none'>('none')
+    const wordleReadyCounter = useRef(0)
+    const wordleResetCounter = useRef(0)
 
     const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
         setToasts(prev => {
@@ -418,6 +428,16 @@ export const Room = ({ peer, name, leave }: Props) => {
             setPhotoboothTrigger(n => n + 1)
         }
         if (msg.kind === 'study-state') setStudy(msg.payload as StudyState)
+        if (msg.kind === 'wordle-ready') {
+            wordleReadyCounter.current += 1
+            setWordleRemoteReadyTick(wordleReadyCounter.current)
+        }
+        if (msg.kind === 'wordle-guess') setWordleRemoteGuess(msg.payload as { id: string; word: string })
+        if (msg.kind === 'wordle-feedback') setWordleRemoteFeedback(msg.payload as WordleFeedbackMsg)
+        if (msg.kind === 'wordle-reset') {
+            wordleResetCounter.current += 1
+            setWordleRemoteResetTick(wordleResetCounter.current)
+        }
         if (msg.kind === 'name') {
             const incoming = (msg.payload as { name: string }).name
             setOther(prev => {
@@ -463,6 +483,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                     toast('Reconnected', 'success')
                 }
                 setLeft(false)
+                setCallConnected(true)
                 if (!callStart.current) {
                     callStart.current = Date.now()
                     durationTimer.current = window.setInterval(() => {
@@ -471,7 +492,10 @@ export const Room = ({ peer, name, leave }: Props) => {
                 }
                 return
             }
-            if (state === 'failed' || state === 'closed') { setLeft(true); return }
+            if (state === 'failed' || state === 'closed') { setLeft(true); setCallConnected(false); return }
+            if (state === 'disconnected') {
+                setCallConnected(false)
+            }
             if (state === 'disconnected' && !timer.current) {
                 reconnectingRef.current = true
                 timer.current = window.setTimeout(() => {
@@ -489,6 +513,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         conn.addEventListener('negotiationneeded', handleNegotiationNeeded)
         conn.addEventListener('connectionstatechange', handleConnectionStateChange)
         navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices)
+        handleConnectionStateChange()
         return () => {
             channel?.removeEventListener('message', handleMessage)
             channel?.removeEventListener('close', handleClose)
@@ -496,6 +521,15 @@ export const Room = ({ peer, name, leave }: Props) => {
             conn.removeEventListener('negotiationneeded', handleNegotiationNeeded)
             conn.removeEventListener('connectionstatechange', handleConnectionStateChange)
             navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices)
+            if (durationTimer.current) {
+                window.clearInterval(durationTimer.current)
+                durationTimer.current = null
+            }
+            callStart.current = null
+            if (timer.current) {
+                window.clearTimeout(timer.current)
+                timer.current = null
+            }
         }
     }, [negotiate, peer, receive, refreshDevices, toast])
 
@@ -614,6 +648,17 @@ export const Room = ({ peer, name, leave }: Props) => {
         if (!audio?.setSinkId || !speakerDevice) return
         void audio.setSinkId(speakerDevice).catch(() => { })
     }, [speakerDevice])
+
+    useEffect(() => {
+        if (activity === 'photobooth' && prevActivityRef.current !== 'photobooth') {
+            setCallOpen(false)
+            setMessagesOpen(false)
+        } else if (activity !== 'photobooth' && prevActivityRef.current === 'photobooth') {
+            setCallOpen(true)
+            setMessagesOpen(true)
+        }
+        prevActivityRef.current = activity
+    }, [activity])
 
     useEffect(() => {
         const remoteAudio = remoteAudioEl.current
@@ -808,7 +853,7 @@ export const Room = ({ peer, name, leave }: Props) => {
         const handleKey = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement | null
             const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-            if (typing || e.ctrlKey || e.metaKey || e.altKey) return
+            if (typing || e.ctrlKey || e.metaKey || e.altKey || activity === 'wordle') return
             const key = e.key.toLowerCase()
             if (key === 'm') { e.preventDefault(); toggleMic() }
             if (key === 'v') { e.preventDefault(); toggleCam() }
@@ -953,6 +998,22 @@ export const Room = ({ peer, name, leave }: Props) => {
         bc('study-state', next)
     }, [bc])
 
+    const sendWordleReady = useCallback(() => {
+        bc('wordle-ready', null)
+    }, [bc])
+
+    const sendWordleGuess = useCallback((id: string, word: string) => {
+        bc('wordle-guess', { id, word })
+    }, [bc])
+
+    const sendWordleFeedback = useCallback((id: string, feedback: LetterState[], status: PlayerStatus, revealWord?: string) => {
+        bc('wordle-feedback', { id, feedback, status, revealWord })
+    }, [bc])
+
+    const sendWordleReset = useCallback(() => {
+        bc('wordle-reset', null)
+    }, [bc])
+
     const clearBoard = () => {
         setStrokes([])
         bc('whiteboard-clear', null)
@@ -997,6 +1058,8 @@ export const Room = ({ peer, name, leave }: Props) => {
         void playChime(ensureAudioCtx(), 'shutter')
     }
 
+    const quality = useConnectionQuality(peer.conn, callConnected)
+
     const label = left ? `${other || 'they'} left` : other ? `${name} + ${other}` : 'waiting...'
     const sharingActive = screenSharing || remoteScreenSharing
     const callExpanded = callOpen && !activityOpen
@@ -1035,7 +1098,15 @@ export const Room = ({ peer, name, leave }: Props) => {
                 <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     <span className="text-sm font-bold text-ember-50 ml-2">bonfire</span>
                     <span className="text-xs font-semibold text-ember-100/30 truncate">· {label}</span>
-                    {callDuration > 0 && (
+                    {callConnected && quality.quality && (
+                        <span
+                            title={`${quality.rttMs ?? '—'}ms round trip · ${quality.lossPct ?? 0}% packet loss`}
+                            className={`flex items-center ${quality.quality === 'good' ? 'text-mint-300/70' : quality.quality === 'fair' ? 'text-ember-400/80' : 'text-berry-300/80'}`}
+                        >
+                            <i className="fa-solid fa-signal text-[0.6rem]" />
+                        </span>
+                    )}
+                    {callConnected && (
                         <span className="ml-1 text-xs font-bold tabular-nums text-mint-300/70">
                             · {fmtDuration(callDuration)}
                         </span>
@@ -1420,6 +1491,23 @@ export const Room = ({ peer, name, leave }: Props) => {
                                             state={study}
                                             onChange={updateStudy}
                                             onLeave={leaveActivity}
+                                            hovered={videoHovered}
+                                        />
+                                    )}
+
+                                    {activity === 'wordle' && (
+                                        <Wordle
+                                            myName={name}
+                                            otherName={other}
+                                            onLeave={leaveActivity}
+                                            onSendReady={sendWordleReady}
+                                            onSendGuess={sendWordleGuess}
+                                            onSendFeedback={sendWordleFeedback}
+                                            onSendReset={sendWordleReset}
+                                            remoteReadyTick={wordleRemoteReadyTick}
+                                            remoteGuess={wordleRemoteGuess}
+                                            remoteFeedback={wordleRemoteFeedback}
+                                            remoteResetTick={wordleRemoteResetTick}
                                             hovered={videoHovered}
                                         />
                                     )}

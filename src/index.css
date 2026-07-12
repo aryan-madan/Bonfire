@@ -1,29 +1,35 @@
 @import "tailwindcss";
+
 @font-face {
-font-family: 'Pangram';
-src: url('/fonts/PPPangramSansRounded-Thin.otf') format('opentype');
-font-weight: 100;
+  font-family: 'Pangram';
+  src: url('/fonts/PPPangramSansRounded-Thin.otf') format('opentype');
+  font-weight: 100;
 }
+
 @font-face {
-font-family: 'Pangram';
-src: url('/fonts/PPPangramSansRounded-Light.otf') format('opentype');
-font-weight: 300;
+  font-family: 'Pangram';
+  src: url('/fonts/PPPangramSansRounded-Light.otf') format('opentype');
+  font-weight: 300;
 }
+
 @font-face {
-font-family: 'Pangram';
-src: url('/fonts/PPPangramSansRounded-Medium.otf') format('opentype');
-font-weight: 500;
+  font-family: 'Pangram';
+  src: url('/fonts/PPPangramSansRounded-Medium.otf') format('opentype');
+  font-weight: 500;
 }
+
 @font-face {
-font-family: 'Pangram';
-src: url('/fonts/PPPangramSansRounded-Semibold.otf') format('opentype');
-font-weight: 600;
+  font-family: 'Pangram';
+  src: url('/fonts/PPPangramSansRounded-Semibold.otf') format('opentype');
+  font-weight: 600;
 }
+
 @font-face {
-font-family: 'Pangram';
-src: url('/fonts/PPPangramSansRounded-Bold.otf') format('opentype');
-font-weight: 700;
+  font-family: 'Pangram';
+  src: url('/fonts/PPPangramSansRounded-Bold.otf') format('opentype');
+  font-weight: 700;
 }
+
 @theme {
   --font-sans: 'Pangram', system-ui, sans-serif;
   --color-ember-50: #fff7ed;
@@ -40,20 +46,24 @@ font-weight: 700;
   --color-mint-300: #86efac;
   --color-berry-300: #fb7185;
 }
+
 :root {
   font-family: 'Pangram', system-ui, sans-serif;
   color: var(--color-ember-50);
   background: var(--color-cocoa-900);
 }
+
 * {
   box-sizing: border-box;
 }
+
 html,
 body,
 #root {
   min-height: 100%;
   margin: 0;
 }
+
 body {
   min-width: 320px;
   background: var(--color-cocoa-900);
@@ -61,30 +71,37 @@ body {
   -webkit-font-smoothing: antialiased;
   transition: background-color 200ms ease, color 200ms ease;
 }
+
 button,
 input {
   font: inherit;
 }
+
 button {
   cursor: pointer;
 }
+
 button:disabled {
   cursor: not-allowed;
 }
+
 input,
 button {
   outline: none;
 }
+
 @keyframes soft-pop {
   from {
     opacity: 0;
     transform: translateY(10px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
+
 @keyframes tiny-spin {
   to {
     transform: rotate(360deg);
