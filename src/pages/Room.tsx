@@ -149,6 +149,7 @@ export const Room = ({ peer, name, leave }: Props) => {
     const [cam, setCam] = useState(false)
     const [remoteCam, setRemoteCam] = useState(false)
     const [remoteMic, setRemoteMic] = useState(false)
+    const [deafened, setDeafened] = useState(false)
     const [screenSharing, setScreenSharing] = useState(false)
     const [remoteScreenSharing, setRemoteScreenSharing] = useState(false)
     const [screenPreview, setScreenPreview] = useState<MediaStream | null>(null)
@@ -226,6 +227,7 @@ export const Room = ({ peer, name, leave }: Props) => {
     const remoteTypingTimer = useRef<number | null>(null)
     const screenTrackRef = useRef<MediaStreamTrack | null>(null)
     const wasCamOnBeforeShare = useRef(false)
+    const micBeforeDeafenRef = useRef(false)
     const endedRef = useRef(false)
     const audioCtxRef = useRef<AudioContext | null>(null)
     const remoteGainRef = useRef<GainNode | null>(null)
@@ -786,6 +788,32 @@ export const Room = ({ peer, name, leave }: Props) => {
         void playChime(ctx, next ? 'camOn' : 'camOff')
     }
 
+    const toggleDeafen = () => {
+        const ctx = ensureAudioCtx()
+        const next = !deafened
+        setDeafened(next)
+        setRemoteMutedForMe(next)
+        if (next) {
+            micBeforeDeafenRef.current = mic
+            if (mic) {
+                const stream = localRef.current
+                if (stream?.getAudioTracks().length) {
+                    stream.getAudioTracks().forEach(t => { t.enabled = false })
+                    setMic(false)
+                    bc('media-state', { micOn: false, camOn: cam })
+                }
+            }
+        } else if (micBeforeDeafenRef.current) {
+            const stream = localRef.current
+            if (stream?.getAudioTracks().length) {
+                stream.getAudioTracks().forEach(t => { t.enabled = true })
+                setMic(true)
+                bc('media-state', { micOn: true, camOn: cam })
+            }
+        }
+        void playChime(ctx, next ? 'deafen' : 'undeafen')
+    }
+
     const startScreenShare = async (): Promise<boolean> => {
         if (busy) return false
         if (screenSharing) return true
@@ -857,6 +885,7 @@ export const Room = ({ peer, name, leave }: Props) => {
             const key = e.key.toLowerCase()
             if (key === 'm') { e.preventDefault(); toggleMic() }
             if (key === 'v') { e.preventDefault(); toggleCam() }
+            if (key === 'd') { e.preventDefault(); toggleDeafen() }
         }
         window.addEventListener('keydown', handleKey)
         return () => window.removeEventListener('keydown', handleKey)
@@ -1294,6 +1323,13 @@ export const Room = ({ peer, name, leave }: Props) => {
                                         >
                                             <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'}`} />
                                         </button>
+                                        <button
+                                            onClick={toggleDeafen}
+                                            title="Toggle deafen (D)"
+                                            className={`flex shrink-0 items-center justify-center h-9 w-9 rounded-full text-sm font-bold transition-all ${deafened ? 'bg-berry-300/20 text-berry-300 hover:bg-berry-300/30' : 'bg-cocoa-800/90 text-ember-100/70 hover:bg-cocoa-700'}`}
+                                        >
+                                            <i className={`fa-solid ${deafened ? 'fa-volume-xmark' : 'fa-headphones'}`} />
+                                        </button>
                                         {(mics.length > 1 || speakers.length > 1) && (
                                             <>
                                                 <div className="w-px h-5 bg-ember-100/10 mx-1" />
@@ -1416,7 +1452,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                                         </div>
                                     ) : (
                                         <div className="flex flex-col gap-2">
-                                            <div className="grid grid-cols-2 gap-2">
+                                            <div className="grid grid-cols-3 gap-2">
                                                 <button
                                                     onClick={toggleMic}
                                                     title="Toggle mic (M)"
@@ -1431,6 +1467,13 @@ export const Room = ({ peer, name, leave }: Props) => {
                                                     className={`flex w-full items-center justify-center rounded-full py-2.5 text-sm transition-colors disabled:opacity-40 ${cam ? 'bg-mint-300 text-cocoa-900 hover:bg-mint-300/85' : 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25'}`}
                                                 >
                                                     <i className={`fa-solid ${cam ? 'fa-video' : 'fa-video-slash'} w-4 text-center`} />
+                                                </button>
+                                                <button
+                                                    onClick={toggleDeafen}
+                                                    title="Toggle deafen (D)"
+                                                    className={`flex w-full items-center justify-center rounded-full py-2.5 text-sm transition-colors ${deafened ? 'bg-berry-300/15 text-berry-300 hover:bg-berry-300/25' : 'bg-cocoa-800 text-ember-100/70 hover:bg-cocoa-700'}`}
+                                                >
+                                                    <i className={`fa-solid ${deafened ? 'fa-volume-xmark' : 'fa-headphones'} w-4 text-center`} />
                                                 </button>
                                             </div>
                                             {(mics.length > 1 || speakers.length > 1) && (

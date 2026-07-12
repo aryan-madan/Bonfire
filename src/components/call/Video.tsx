@@ -29,7 +29,7 @@ export const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCa
     return (
         <div
             onContextMenu={onContextMenu}
-            className={`relative overflow-hidden bg-cocoa-800 min-h-0 flex-1 transition-shadow duration-150 ${expanded ? 'rounded-[1.75rem]' : 'rounded-[1.15rem]'} ${speaking ? 'ring-2 ring-mint-300' : 'ring-2 ring-transparent'}`}
+            className={`relative overflow-hidden bg-cocoa-800 min-h-0 flex-1 transition-shadow duration-150 ${expanded ? 'rounded-[1.75rem]' : 'rounded-[1.15rem]'} ${speaking ? 'border-2 border-mint-300' : 'border-2 border-transparent'}`}
         >
             <video
                 ref={isLocal ? localVidRef : remoteVidRef}
@@ -51,7 +51,7 @@ export const VideoTile = ({ isLocal, expanded, local, remote, cam, mic, remoteCa
                     ) : (
                         <>
                             <div
-                                className={`${avatarSize} rounded-full grid place-items-center font-bold text-white ${avatarBg} ${speaking ? 'ring-2 ring-mint-300' : ''}`}
+                                className={`${avatarSize} rounded-full grid place-items-center font-bold text-white ${avatarBg} ${speaking ? 'border-2 border-mint-300' : ''}`}
                             >
                                 {(!isLocal && !other) ? <i className="fa-solid fa-user" /> : av(displayName)}
                             </div>

@@ -76,6 +76,21 @@ const CHIMES: Record<string, ChimeEvent[]> = {
         { type: 'tone', freq: A4, start: 0.09, duration: 0.18, gain: 0.11, waveform: 'triangle', reverb: 0.22 },
     ],
 
+    deafen: [
+        { type: 'noise', start: 0, duration: 0.015, gain: 0.06, filterFreq: 1200, filterQ: 1.1, filterType: 'bandpass', reverb: 0.1 },
+        { type: 'sweep', startFreq: 450, endFreq: 220, start: 0, duration: 0.34, gain: 0.045, reverb: 0.2 },
+        { type: 'tone', freq: C4, start: 0.01, duration: 0.12, gain: 0.09, waveform: 'triangle', reverb: 0.2 },
+        { type: 'tone', freq: A3, start: 0.08, duration: 0.14, gain: 0.08, waveform: 'triangle', reverb: 0.22 },
+        { type: 'tone', freq: G3, start: 0.16, duration: 0.22, gain: 0.075, waveform: 'triangle', reverb: 0.28 },
+    ],
+    undeafen: [
+        { type: 'noise', start: 0, duration: 0.015, gain: 0.06, filterFreq: 1200, filterQ: 1.1, filterType: 'bandpass', reverb: 0.1 },
+        { type: 'sweep', startFreq: 220, endFreq: 450, start: 0, duration: 0.3, gain: 0.045, reverb: 0.18 },
+        { type: 'tone', freq: G3, start: 0.01, duration: 0.1, gain: 0.075, waveform: 'triangle', reverb: 0.2 },
+        { type: 'tone', freq: A3, start: 0.08, duration: 0.12, gain: 0.08, waveform: 'triangle', reverb: 0.2 },
+        { type: 'tone', freq: C4, start: 0.16, duration: 0.2, gain: 0.09, waveform: 'triangle', reverb: 0.24 },
+    ],
+
     shutter: [
         { type: 'noise', start: 0, duration: 0.03, gain: 0.36, filterFreq: 2400, filterQ: 1.0, filterType: 'bandpass', reverb: 0.1 },
         { type: 'noise', start: 0.005, duration: 0.05, gain: 0.16, filterFreq: 800, filterQ: 0.7, filterType: 'lowpass', reverb: 0.1 },
