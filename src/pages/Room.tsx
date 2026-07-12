@@ -1504,6 +1504,7 @@ export const Room = ({ peer, name, leave }: Props) => {
                                             onSendGuess={sendWordleGuess}
                                             onSendFeedback={sendWordleFeedback}
                                             onSendReset={sendWordleReset}
+                                            onResult={status => void playChime(ensureAudioCtx(), status === 'won' ? 'wordleWin' : 'wordleLose')}
                                             remoteReadyTick={wordleRemoteReadyTick}
                                             remoteGuess={wordleRemoteGuess}
                                             remoteFeedback={wordleRemoteFeedback}

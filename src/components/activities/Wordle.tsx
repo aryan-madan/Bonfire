@@ -143,6 +143,7 @@ interface Props {
     onSendGuess: (id: string, word: string) => void
     onSendFeedback: (id: string, feedback: LetterState[], status: PlayerStatus, revealWord?: string) => void
     onSendReset: () => void
+    onResult: (status: 'won' | 'lost') => void
     remoteReadyTick: number
     remoteGuess: { id: string; word: string } | null
     remoteFeedback: WordleFeedbackMsg | null
@@ -166,7 +167,7 @@ const emptyTheirBoard: TheirBoard = { guesses: [], status: 'guessing' }
 
 export const Wordle = ({
     otherName, onLeave,
-    onSendReady, onSendGuess, onSendFeedback, onSendReset,
+    onSendReady, onSendGuess, onSendFeedback, onSendReset, onResult,
     remoteReadyTick, remoteGuess, remoteFeedback, remoteResetTick,
     hovered,
 }: Props) => {
@@ -279,6 +280,7 @@ export const Wordle = ({
             if (revealTimer.current) window.clearTimeout(revealTimer.current)
             revealTimer.current = window.setTimeout(() => {
                 setMyRevealedStatus(remoteFeedback.status)
+                onResult(remoteFeedback.status === 'won' ? 'won' : 'lost')
             }, REVEAL_TOTAL)
         }
     }, [remoteFeedback])

@@ -40,10 +40,10 @@ const tones = (freqs: number[], opts?: { gap?: number; duration?: number; gain?:
     return freqs.map((freq, i) => ({ type: 'tone', freq, start: i * gap, duration, gain, waveform: opts?.waveform ?? 'triangle', reverb }))
 }
 
-// note references (equal temperament)
-const A3 = 220.0, B3 = 246.94
+const G3 = 196.0, A3 = 220.0, B3 = 246.94
 const C4 = 261.63, D4 = 293.66, E4 = 329.63, F4 = 349.23, G4 = 392.0, A4 = 440.0, B4 = 493.88
-const C5 = 523.25, E5 = 659.25, G5 = 783.99
+const C5 = 523.25, D5 = 587.33, E5 = 659.25, F5 = 698.46, G5 = 783.99, A5 = 880.0, B5 = 987.77
+const C6 = 1046.5
 
 const CHIMES: Record<string, ChimeEvent[]> = {
     join: tones([C5, E5, G5], { gap: 0.085, duration: 0.36, gain: 0.14, reverb: 0.22 }),
@@ -98,6 +98,13 @@ const CHIMES: Record<string, ChimeEvent[]> = {
 
     messageSend: tones([G4], { duration: 0.13, gain: 0.11, reverb: 0.2 }),
     messageReceive: tones([E4, A4], { gap: 0.095, duration: 0.16, gain: 0.12, reverb: 0.24 }),
+
+    wordleWin: tones([C5, E5, G5, C6], { gap: 0.1, duration: 0.32, gain: 0.15, waveform: 'triangle', reverb: 0.32 }),
+    wordleLose: [
+        { type: 'tone', freq: A4, start: 0, duration: 0.22, gain: 0.12, waveform: 'triangle', reverb: 0.24 },
+        { type: 'tone', freq: F4, start: 0.13, duration: 0.24, gain: 0.11, waveform: 'triangle', reverb: 0.26 },
+        { type: 'tone', freq: D4, start: 0.27, duration: 0.4, gain: 0.1, waveform: 'triangle', reverb: 0.32 },
+    ],
 }
 
 const noiseBufferCache = new WeakMap<AudioContext, Map<number, AudioBuffer>>()
@@ -160,11 +167,6 @@ const sendToReverb = (ctx: AudioContext, source: AudioNode, amount: number) => {
     wetGain.connect(convolver)
 }
 
-// plucked-note synth: two slightly detuned oscillators for a soft chorus-like body,
-// paired with a lowpass filter envelope that sweeps from bright to dark as the note
-// decays. That downward filter sweep is what makes it read as a soft mallet/pluck
-// rather than either a flat metallic ping (static bright filter) or a dull thud
-// (static dark filter).
 const playTone = (ctx: AudioContext, now: number, e: ToneEvent) => {
     const start = now + e.start
     const gain = e.gain ?? 0.13
