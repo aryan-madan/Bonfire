@@ -35,6 +35,7 @@ Experience Bonfire [here.](https://usebonfire.vercel.app/)
 | **Photobooth** | Cut yourselves out and drop into the same background, almost like you're there together. |
 | **Study** | Study together using a synced Pomodoro timer. |
 | **Reminds Me of You** | Send them a song that reminds you of them. Built by [niyikes](https://github.com/niyikes/reminds-me-of-you). |
+| **Wordle** | Pick secret words for each other and see who can crack the other's one first. |
 
 ## AI Usage
 
@@ -44,6 +45,7 @@ Experience Bonfire [here.](https://usebonfire.vercel.app/)
 - photobooth
 - whiteboard bugs
 - help with chimes
+- wordle animations
 
 Made with ❤️ by Ary<br>
 Love to the point of creation
